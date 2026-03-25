@@ -4,6 +4,16 @@ import type { User, AuthState } from '../types';
 import { storeToken, clearToken, getStoredToken } from '../services/auth';
 import { initSocket, disconnectSocket } from '../services/socket';
 
+const ABORT_TIMEOUT = 3000; // 3 seconds timeout for disk storage
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Operation timed out')), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
 interface AuthStore extends AuthState {
   login: (token: string, user?: User) => Promise<void>;
   logout: () => Promise<void>;
@@ -49,38 +59,37 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const token = await getStoredToken();
-      const deviceId = await SecureStore.getItemAsync('device_id');
+      // Use timeout to prevent hanging on SecureStore (can happen in APK if Keystore is slow)
+      const token = await withTimeout(getStoredToken(), ABORT_TIMEOUT).catch(() => null);
+      const deviceId = await withTimeout(SecureStore.getItemAsync('device_id'), ABORT_TIMEOUT).catch(() => null);
 
       if (token) {
-        // Set initial state from storage immediately to unblock UI
         set({
           token,
           deviceId: deviceId ?? null,
           isAuthenticated: true,
         });
 
-        // Initialize socket
+        // Initialize socket (async, non-blocking)
         initSocket(token);
 
-        // Fetch user profile in background to update user data
-        const { getProfile } = await import('../services/auth');
-        try {
-          const user = await getProfile();
-          set({
-            user: user.user ?? user,
-          });
-        } catch (err) {
-          console.warn('[AuthStore] Session invalid or server slow during hydration:', err);
-          // If we can't get the profile, we check if it was a 401
-          // We don't necessarily logout immediately on network error, 
-          // but if it's definitely unauthorized, we clear it.
-          // Note: Axois interceptor already handles 401s by clearing token.
-        }
+        // Fetch user profile in background without awaiting the entire hydration
+        (async () => {
+          try {
+            const { getProfile } = await import('../services/auth');
+            const user = await getProfile();
+            set({
+              user: user.user ?? user,
+            });
+          } catch (err) {
+            console.warn('[AuthStore] Background profile update failed:', err);
+          }
+        })();
       } else {
         set({ isAuthenticated: false });
       }
-    } catch {
+    } catch (err) {
+      console.error('[AuthStore] Hydration failed:', err);
       set({ token: null, user: null, isAuthenticated: false });
     }
   },

@@ -53,7 +53,8 @@
           "color": "#6366F1",
           "defaultChannel": "attendance"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

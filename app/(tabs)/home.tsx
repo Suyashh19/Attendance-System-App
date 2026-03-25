@@ -12,6 +12,7 @@ import {
 } from '../../services/attendance';
 import { SubjectCard } from '../../components/SubjectCard';
 import { FacultySessionModal } from '../../components/FacultySessionModal';
+import { SchedulingModal } from '../../components/SchedulingModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
 import { registerForPushNotifications } from '../../services/notification';
@@ -32,6 +33,7 @@ export default function HomeScreen() {
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [schedulingSubject, setSchedulingSubject] = useState<Subject | null>(null);
   
   // Form States
   const [newSubject, setNewSubject] = useState({ name: '', code: '' });
@@ -80,7 +82,13 @@ export default function HomeScreen() {
   });
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
-  const handleStartSession = async (subject: Subject) => {
+  const handleStartSessionPress = (subject: Subject) => {
+    setSchedulingSubject(subject);
+  };
+
+  const handleConfirmSchedule = async (date: string, startTime: string, endTime: string) => {
+    if (!schedulingSubject) return;
+    
     try {
       setIsActionLoading(true);
       const loc = await getLocation();
@@ -89,12 +97,21 @@ export default function HomeScreen() {
         return;
       }
 
-      const session = await startSession(subject.id, loc.latitude, loc.longitude);
+      const session = await startSession({
+        subjectId: schedulingSubject.id,
+        date,
+        startTime,
+        endTime,
+        latitude: loc.latitude,
+        longitude: loc.longitude
+      });
+
       setFacultyActiveSession({
         ...session,
-        subjectName: subject.name
+        subjectName: schedulingSubject.name
       });
       setActiveSessionId(session.id);
+      setSchedulingSubject(null);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.error || 'Failed to start session');
     } finally {
@@ -105,11 +122,16 @@ export default function HomeScreen() {
   const handleEndSession = async () => {
     if (!facultyActiveSession) return;
     try {
+      setIsActionLoading(true); // Added feedback
       await endSession(facultyActiveSession.id);
       setFacultyActiveSession(null);
       setActiveSessionId(null);
     } catch (err) {
-      Alert.alert('Error', 'Failed to end session');
+      // Logic for session already closed handled by backend idempotency now
+      setFacultyActiveSession(null);
+      setActiveSessionId(null);
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
@@ -226,8 +248,8 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center mt-20">
-            <Ionicons name="library-outline" size={64} color="#334155" className="mb-4" />
-            <Text className="text-dark-muted font-medium text-lg">No classes found</Text>
+            <Ionicons name="rocket-outline" size={64} color="#334155" className="mb-4" />
+            <Text className="text-dark-muted font-medium text-lg">🚀 No classes yet! Join using a subject code.</Text>
             <TouchableOpacity 
               onPress={() => user?.role === 'faculty' ? setShowCreateModal(true) : setShowEnrollModal(true)}
               className="mt-4"
@@ -242,7 +264,7 @@ export default function HomeScreen() {
           <SubjectCard 
             subject={item} 
             sessionActive={activeSessionId === String(item.id)} 
-            onStartSession={() => handleStartSession(item)}
+            onStartSession={() => handleStartSessionPress(item)}
           />
         )}
       />
@@ -323,6 +345,15 @@ export default function HomeScreen() {
         subjectName={facultyActiveSession?.subjectName || ''}
         correctCode={facultyActiveSession?.correctCode || ''}
         onEndSession={handleEndSession}
+      />
+
+      {/* Scheduling Modal */}
+      <SchedulingModal
+        visible={!!schedulingSubject}
+        subject={schedulingSubject}
+        onClose={() => setSchedulingSubject(null)}
+        onConfirm={handleConfirmSchedule}
+        loading={isActionLoading}
       />
       
       {/* Global Activity Indicator for actions */}

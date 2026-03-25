@@ -3,6 +3,34 @@ import * as SecureStore from 'expo-secure-store';
 
 export const BASE_URL = 'https://attendance-system-backend-uqgy.onrender.com/api';
 
+export const API_ROUTES = {
+  AUTH: {
+    LOGIN: '/auth/login',
+    REGISTER: '/auth/register',
+    PUSH_TOKEN: '/auth/push-token',
+  },
+  SUBJECTS: {
+    MY: '/subjects/my',
+    CREATE: '/subjects',
+  },
+  ENROLLMENTS: {
+    ENROLL: '/enrollments/enroll',
+    BY_SUBJECT: (id: number) => `/enrollments/${id}`,
+  },
+  SESSIONS: {
+    START: '/sessions/start',
+    END: (id: string | number) => `/sessions/${id}/end`,
+    HISTORY: (subjectId: number) => `/sessions/${subjectId}/history`,
+    ACTIVE: (subjectId: number) => `/sessions/${subjectId}/active`,
+  },
+  ATTENDANCE: {
+    SUBMIT: '/attendance/submit',
+    HISTORY: '/attendance/history',
+    ANALYTICS: (subjectId: number) => `/attendance/subject/${subjectId}/analytics`,
+    MY_RECORD: (subjectId: number) => `/attendance/subject/${subjectId}/my-record`,
+  }
+};
+
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 60000,
@@ -31,10 +59,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    // Friendly error for "Endpoint not found" (common when backend is updating)
+    if (error.response?.status === 404 && (error.response.data as any)?.error === "Endpoint not found") {
+      (error as any).message = "Server error. Please try again.";
+    }
+
     if (error.response?.status === 401) {
       // Token expired — clear storage
       await SecureStore.deleteItemAsync('auth_token').catch(() => null);
-      // The auth store listener will handle redirect
     }
     return Promise.reject(error);
   }

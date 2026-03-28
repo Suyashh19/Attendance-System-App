@@ -24,6 +24,7 @@ export const API_ROUTES = {
     ACTIVE: (subjectId: number) => `/sessions/${subjectId}/active`,
   },
   ATTENDANCE: {
+    BASE: '/attendance',
     SUBMIT: '/attendance/submit',
     HISTORY: '/attendance/history',
     ANALYTICS: (subjectId: number) => `/attendance/subject/${subjectId}/analytics`,

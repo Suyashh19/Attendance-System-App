@@ -1,93 +1,88 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-// import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { View, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 
 import '../global.css';
 
 const queryClient = new QueryClient();
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-// SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => null);
 
-export default function RootLayout() {
-  const fontsLoaded = true;
-
-  const { isAuthenticated, hydrate } = useAuthStore();
-  const [isReady, setIsReady] = useState(false);
-  
+function AuthRedirectHandler() {
+  const { isAuthenticated, isHydrated } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
+  const navigationState = useRootNavigationState();
 
-  // Failsafe: Continue after 8 seconds even if hydration is stuck
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!isReady) {
-        console.warn('[RootLayout] Initialization timeout reached');
-        setIsReady(true);
-        SplashScreen.hideAsync().catch(() => null);
-      }
-    }, 8000);
-    return () => clearTimeout(timeout);
-  }, [isReady]);
-
-  // Root initialization
-  useEffect(() => {
-    let mounted = true;
-    
-    async function init() {
-      try {
-        // Hydrate auth state from disk
-        await hydrate();
-      } catch (err) {
-        console.error('[RootLayout] Hydration error:', err);
-      } finally {
-        if (mounted) {
-          setIsReady(true);
-        }
-      }
-    }
-
-    init();
-    return () => { mounted = false; };
-  }, [hydrate]);
-
-  const onLayoutRootView = useCallback(async () => {
-    if (isReady && fontsLoaded) {
-      await SplashScreen.hideAsync().catch(() => null);
-    }
-  }, [isReady, fontsLoaded]);
-
-  // Handle routing based on Auth state
-  useEffect(() => {
-    if (!isReady || !fontsLoaded) return;
+    // Wait until navigation is mounted and auth state is hydrated
+    if (!navigationState?.key || !isHydrated) return;
 
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/(auth)/login');
+      if (segments[segments.length - 1] !== 'login') {
+        const timer = setTimeout(() => {
+           router.replace('/(auth)/login');
+        }, 1);
+        return () => clearTimeout(timer);
+      }
     } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)/home');
+      const timer = setTimeout(() => {
+         router.replace('/(tabs)/home');
+      }, 1);
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isReady, fontsLoaded, segments, router]);
+  }, [isAuthenticated, segments, navigationState?.key, isHydrated]);
 
-  if (!isReady || !fontsLoaded) {
-    return null; // Return null so onLayout triggers on the subsequent render
+  return null;
+}
+
+function RootLayoutNav() {
+  return (
+    <ThemeProvider value={DarkTheme}>
+      <AuthRedirectHandler />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+      </Stack>
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
+  const { hydrate } = useAuthStore();
+
+  useEffect(() => {
+    async function init() {
+      try {
+        await hydrate();
+      } catch (err) {
+        console.warn('[RootLayout] Hydration error:', err);
+      } finally {
+        setIsReady(true);
+        // Hide splash screen only after hydration
+        SplashScreen.hideAsync().catch(() => null);
+      }
+    }
+    init();
+  }, [hydrate]);
+
+  if (!isReady) {
+    return null;
   }
 
   return (
-    <View className="flex-1" onLayout={onLayoutRootView}>
+    <View className="flex-1">
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider value={DarkTheme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-        </ThemeProvider>
+        <RootLayoutNav />
       </QueryClientProvider>
     </View>
   );

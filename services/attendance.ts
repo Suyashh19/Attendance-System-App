@@ -1,5 +1,5 @@
 import api, { API_ROUTES } from './api';
-import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult } from '../types';
+import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult, SubjectHistory } from '../types';
 
 // ─── Subjects ────────────────────────────────────────────────────────────────
 export async function getMySubjects(): Promise<Subject[]> {
@@ -7,9 +7,9 @@ export async function getMySubjects(): Promise<Subject[]> {
   return Array.isArray(data) ? data : (data.subjects ?? []);
 }
 
-export async function createSubject(name: string, code: string): Promise<Subject> {
-  const { data } = await api.post(API_ROUTES.SUBJECTS.CREATE, { name, code });
-  return data.subject || data;
+export async function createSubject(name: string, code: string, type: 'theory' | 'practical'): Promise<Subject> {
+  const { data } = await api.post('/subjects', { name, code, type });
+  return data.subject;
 }
 
 export async function enrollInSubject(code: string): Promise<void> {
@@ -51,9 +51,13 @@ export async function getActiveSession(subjectId: number) {
 }
 
 // ─── Attendance History ───────────────────────────────────────────────────────
-export async function getAttendanceHistory(): Promise<AttendanceRecord[]> {
+export async function getAttendanceHistory(): Promise<SubjectHistory[]> {
   const { data } = await api.get(API_ROUTES.ATTENDANCE.HISTORY);
   return Array.isArray(data) ? data : (data.records ?? data.history ?? []);
+}
+
+export async function deleteSubjectHistory(subjectId: number): Promise<void> {
+  await api.delete(`${API_ROUTES.ATTENDANCE.BASE}/subject/${subjectId}`);
 }
 
 // ─── Submit Attendance ────────────────────────────────────────────────────────

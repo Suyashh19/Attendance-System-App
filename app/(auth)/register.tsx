@@ -16,6 +16,15 @@ const registerSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['student', 'faculty'] as const),
+  prn: z.string().optional(),
+}).refine((data) => {
+  if (data.role === 'student' && (!data.prn || data.prn.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'PRN is required for students',
+  path: ['prn'],
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -153,6 +162,25 @@ export default function RegisterScreen() {
                 />
               )}
             />
+
+            {selectedRole === 'student' && (
+              <Controller
+                control={control}
+                name="prn"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="PRN (Permanent Reg. No.)"
+                    placeholder="e.g. 1032210001"
+                    keyboardType="numeric"
+                    icon="id-card-outline"
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value || ''}
+                    error={errors.prn?.message}
+                  />
+                )}
+              />
+            )}
 
             <Controller
               control={control}

@@ -28,8 +28,18 @@ export async function clearToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
-// ─── User Profile ─────────────────────────────────────────────────────────────
+// Profile Update
 export async function getProfile() {
   const { data } = await api.get('/auth/me');
+  return data;
+}
+
+export async function updatePrn(prn: string) {
+  const { data } = await api.post('/auth/update-prn', { prn });
+  return data;
+}
+
+export async function deleteAccount() {
+  const { data } = await api.delete('/auth/delete-account');
   return data;
 }

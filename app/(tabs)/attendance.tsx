@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, Alert } from 'react-native';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { View, Text, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,9 +17,19 @@ import { AttendanceResultModal } from '../../components/AttendanceResultModal';
 import { Button } from '../../components/Button';
 import type { SessionStartedPayload, VerificationState, AttendanceStatus } from '../../types';
 
+type SessionState = 'IDLE' | 'ACTIVE' | 'EXPIRED' | 'LOCKED';
+
 export default function AttendanceScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { user } = useAuthStore();
+  
+  // Guard: Only students should be here
+  if (user?.role !== 'student') {
+    router.replace('/(tabs)/home');
+    return null;
+  }
+
   const [sessionData, setSessionData] = useState<SessionStartedPayload | null>(null);
   const deviceId = useDeviceId();
   const { location, getLocation, error: locationError } = useLocation();
@@ -34,42 +44,192 @@ export default function AttendanceScreen() {
   // Real-time verification state
   const [verification, setVerification] = useState<VerificationState>({
     sessionActive: true,
-    deviceMatched: null,
+    deviceMatched: true, // Optimistic, will be refined in useEffect
     locationVerified: null,
     timeValid: true,
   });
 
-  // Track if time ran out
-  const [timeExpired, setTimeExpired] = useState(false);
+  // Strictly controlled session state machine
+  const [sessionState, setSessionState] = useState<SessionState>('IDLE');
+  const [timeOffset, setTimeOffset] = useState<number>(0);
+  const [initialTimeLeft, setInitialTimeLeft] = useState<number>(15);
+  const isTransitioning = useRef(false);
+
+  // ─── 3. Handlers ────────────────────────────────────────────────────────
+  const handleTimeComplete = useCallback(() => {
+    if (sessionState === 'EXPIRED' || sessionState === 'LOCKED') return;
+    
+    console.log('[DEBUG] Timer completed or expired. Locking session.');
+    setSessionState('EXPIRED');
+    setVerification((prev) => ({ ...prev, timeValid: false, sessionActive: false }));
+    
+    // If no code was selected and not currently submitting, show EXPIRED status
+    if (!selectedCode && !isSubmitting && !resultStatus) {
+      setResultStatus('EXPIRED');
+      setResultMessage('Attendance window closed. No code was selected.');
+    }
+    
+    // Auto-transition to LOCKED after a brief delay to prevent any UI flicker or race conditions
+    setTimeout(() => setSessionState('LOCKED'), 500);
+  }, [sessionState, selectedCode, isSubmitting, resultStatus]);
 
   // ─── 1. Load Session Data ───────────────────────────────────────────────────
   useEffect(() => {
     if (params.sessionData) {
       try {
-        const parsed = JSON.parse(params.sessionData as string);
+        const parsed = JSON.parse(params.sessionData as string) as SessionStartedPayload;
+        console.log('[DEBUG] AttendanceScreen received sessionData:', parsed);
+        
+        // --- 1. Reset ALL States for New Session ---
+        setSessionData(null); 
+        setSelectedCode(null);
+        setIsSubmitting(false);
+        setResultStatus(null);
+        setResultMessage(undefined);
+        setSessionState('IDLE');
+        setVerification({
+          sessionActive: true,
+          deviceMatched: true,
+          locationVerified: null, // Reset to waiting
+          timeValid: true,
+        });
+
+        // --- 2. Initialize New Data ---
+        let offset = 0;
+        if (parsed.serverTime) {
+          offset = new Date(parsed.serverTime).getTime() - Date.now();
+          setTimeOffset(offset);
+        }
+
+        const expiryTime = new Date(parsed.windowExpiry).getTime();
+        const nowSynced = Date.now() + offset;
+        const remaining = Math.max(0, (expiryTime - nowSynced) / 1000);
+        
+        const isValidTime = !isNaN(expiryTime);
+        if (isValidTime) {
+          setInitialTimeLeft(Math.ceil(remaining));
+        }
+
         setSessionData(parsed);
+
+        // Immediate device check
+        if (deviceId && user) {
+          const isMatch = !user.deviceId || user.deviceId === deviceId;
+          setVerification(prev => ({ ...prev, deviceMatched: isMatch }));
+        }
+
+        if (isValidTime && remaining <= 0) {
+          setSessionState('EXPIRED');
+          setResultStatus('EXPIRED');
+          setResultMessage('Attendance window already closed.');
+          setVerification(prev => ({ ...prev, timeValid: false, sessionActive: false }));
+        }
       } catch (err) {
         console.error('Failed to parse session data', err);
         router.replace('/(tabs)/home');
       }
     }
-  }, [params.sessionData, router]);
+  }, [params.sessionData, router, deviceId, user]);
 
-  // ─── 2. Fetch Location Immediately ──────────────────────────────────────────
+  // ─── 1.5 Robust Background Sync ───────────────────────────────────────────
   useEffect(() => {
-    if (sessionData && !location) {
-      getLocation().then((loc) => {
-        setVerification((prev) => ({
-          ...prev,
-          locationVerified: !!loc, // True if we got coords. Backend does actual distance check
-        }));
-      });
+    if (!sessionData || sessionState !== 'ACTIVE') return;
+
+    const interval = setInterval(() => {
+      const expiryTime = new Date(sessionData.windowExpiry).getTime();
+      if (isNaN(expiryTime)) return;
+
+      const nowSynced = Date.now() + timeOffset;
+      if (nowSynced >= expiryTime) {
+        handleTimeComplete();
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionData, timeOffset, sessionState, handleTimeComplete]);
+
+
+  // ─── 2. Real-time Session Sync ──────────────────────────────────────────
+  useSocket({
+    subjectIds: sessionData ? [String(sessionData.subjectId)] : [],
+    onSessionEnded: (data) => {
+      if (sessionData && String(data.sessionId) === String(sessionData.sessionId)) {
+        console.log('[DEBUG] Session ended by faculty, triggering expiration');
+        handleTimeComplete();
+        setResultMessage('The session was closed by the faculty.');
+      }
+    },
+  });
+
+  // ─── 2.5 Fetch Location Immediately ──────────────────────────────────────────
+  // ─── 2.5 High-Accuracy GPS Loop ──────────────────────────────────────────
+  useEffect(() => {
+    if (!sessionData || sessionState !== 'IDLE' || resultStatus) return;
+
+    let isMounted = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
+
+    const pollLocation = async () => {
+      if (!isMounted || sessionState !== 'IDLE' || resultStatus) return;
+      
+      console.log(`[DEBUG] Polling GPS (Attempt ${retryCount + 1})...`);
+      const loc = await getLocation();
+
+      if (loc && isMounted) {
+        const isHighlyAccurate = loc.accuracy && loc.accuracy < 60;
+        console.log(`[DEBUG] GPS accuracy: ${loc.accuracy}m. Verified: ${isHighlyAccurate}`);
+        
+        const isFinalAttempt = retryCount >= MAX_RETRIES;
+        
+        if (isHighlyAccurate || isFinalAttempt) {
+           setVerification((prev) => ({
+            ...prev,
+            locationVerified: isHighlyAccurate ? true : false,
+          }));
+          // Transition to ACTIVE now that GPS is resolved (either success or final fail)
+          setSessionState('ACTIVE');
+        } else {
+          // Retry
+          retryCount++;
+          setTimeout(pollLocation, 2000);
+        }
+      } else if (isMounted) {
+        setVerification((prev) => ({ ...prev, locationVerified: false }));
+        setSessionState('ACTIVE'); // Proceed to active even if failed, so they can select a code (if possible)
+      }
+    };
+
+    pollLocation();
+
+    return () => { isMounted = false; };
+  }, [sessionData, sessionState, resultStatus, getLocation]);
+
+  // ─── 2.5 Update verification status based on final result ──────────────
+  useEffect(() => {
+    if (resultStatus === 'PRESENT') {
+      setVerification(prev => ({
+        ...prev,
+        deviceMatched: true,
+        locationVerified: true,
+        timeValid: true,
+        sessionActive: true
+      }));
+    } else if (resultStatus === 'INVALID' && resultMessage) {
+      const msg = resultMessage.toLowerCase();
+      // Heuristic parsing of backend reason to update specific verification dots
+      if (msg.includes('device')) {
+        setVerification(prev => ({ ...prev, deviceMatched: false }));
+      }
+      if (msg.includes('location') || msg.includes('range')) {
+        setVerification(prev => ({ ...prev, locationVerified: false }));
+      }
+      if (msg.includes('late') || msg.includes('time')) {
+        setVerification(prev => ({ ...prev, timeValid: false }));
+      }
     }
-    
-    if (deviceId) {
-      setVerification((prev) => ({ ...prev, deviceMatched: true })); // Pre-checked frontend
-    }
-  }, [sessionData, location, deviceId, getLocation]);
+  }, [resultStatus, resultMessage]);
 
   // ─── 3. Listen for Results via Socket ────────────────────────────────────────
   useSocket({
@@ -95,21 +255,33 @@ export default function AttendanceScreen() {
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
   const handleSubmit = async (code: string) => {
-    if (!sessionData || !deviceId || !location || timeExpired) return;
+    if (!sessionData || !deviceId || !location || sessionState !== 'ACTIVE' || !code) return;
 
     setSelectedCode(code);
     setIsSubmitting(true);
     setResultStatus('LOADING');
 
     try {
-      // Fire and forget via REST -> result comes via Socket
-      await submitAttendance({
+      // 1. Submit via REST
+      const result = await submitAttendance({
         sessionId: sessionData.sessionId,
         selectedCode: code,
         deviceId: deviceId,
         latitude: location.latitude,
         longitude: location.longitude,
+        accuracy: location.accuracy ?? undefined,
       });
+
+      // 2. If REST returns immediate final status, update UI instantly (Real-time Sync)
+      if (result.status) {
+        console.log('[DEBUG] REST submission returned immediate result:', result);
+        setResultStatus(result.status);
+        setResultMessage(result.message);
+        setIsSubmitting(false);
+        queryClient.invalidateQueries({ queryKey: ['history'] });
+      }
+      
+      // Note: If result is still 'LOADING' (rare), the useSocket hook will handle the 'attendance_result' event.
     } catch (err: any) {
       setIsSubmitting(false);
       const msg = err.response?.data?.message || 'Submission failed';
@@ -118,15 +290,6 @@ export default function AttendanceScreen() {
     }
   };
 
-  const handleTimeComplete = () => {
-    setTimeExpired(true);
-    setVerification((prev) => ({ ...prev, timeValid: false }));
-    
-    if (!isSubmitting && !resultStatus) {
-      setResultStatus('ABSENT');
-      setResultMessage('You did not select a code within the 15-second window.');
-    }
-  };
 
   const handleModalDismiss = () => {
     setResultStatus(null);
@@ -153,17 +316,25 @@ export default function AttendanceScreen() {
       </View>
 
       {/* Countdown Timer */}
-      <View className="mb-10">
-        <CountdownTimer 
-          duration={sessionData.windowSeconds} 
-          onComplete={handleTimeComplete}
-          size={160}
-          strokeWidth={12}
-        />
+      <View className="mb-6">
+        {sessionState === 'IDLE' ? (
+          <View style={{ width: 140, height: 140 }} className="items-center justify-center border-4 border-primary/20 rounded-full">
+            <ActivityIndicator size="large" color="#6366F1" />
+            <Text className="text-primary font-bold text-[10px] mt-2 tracking-tighter">WAITING FOR GPS</Text>
+          </View>
+        ) : (
+          <CountdownTimer 
+            key={sessionData.sessionId} // Re-mount timer if session changes
+            duration={initialTimeLeft} 
+            onComplete={handleTimeComplete}
+            size={140}
+            strokeWidth={10}
+          />
+        )}
       </View>
 
       {/* Verification Layer Status */}
-      <View className="w-full mb-8">
+      <View className="w-full mb-6">
         <VerificationStatus state={verification} />
         {locationError && (
           <Text className="text-danger text-xs font-bold mt-2 text-center">
@@ -173,20 +344,39 @@ export default function AttendanceScreen() {
       </View>
 
       {/* Code Selection */}
-      <View className="w-full flex-1">
-        <Text className="text-white font-bold text-lg mb-2 ml-1 text-center">
+      <View style={{ flex: 1, width: '100%' }}>
+        <Text className="text-white font-bold text-lg mb-1 ml-1 text-center">
           Select Displayed Code
         </Text>
-        <Text className="text-dark-muted text-center text-sm mb-2 px-4">
-          Look at the faculty's screen and match the 3-digit code before time runs out.
+        <Text className="text-dark-muted text-center text-sm mb-1 px-4">
+          Match the 3-digit code before time runs out.
         </Text>
         
-        <AttendanceCodeSelector
-          options={sessionData.options}
-          selectedCode={selectedCode}
-          onSelect={handleSubmit}
-          disabled={timeExpired || isSubmitting || !location}
-        />
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 40, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          className="w-full"
+        >
+        <View style={{ flex: 1, width: '100%' }}>
+          <AttendanceCodeSelector
+            options={sessionData.options}
+            selectedCode={selectedCode}
+            onSelect={handleSubmit}
+            disabled={sessionState !== 'ACTIVE' || isSubmitting || !location}
+          />
+
+          {verification.locationVerified === null && sessionState === 'ACTIVE' && !locationError && (
+            <View className="absolute inset-0 bg-dark/60 items-center justify-center rounded-3xl border border-dark-border/50">
+              <ActivityIndicator size="large" color="#6366F1" />
+              <Text className="text-white font-bold mt-4">Waiting for GPS...</Text>
+              <Text className="text-dark-muted text-xs mt-2 px-8 text-center">
+                We need your high-accuracy location to verify attendance.
+              </Text>
+            </View>
+          )}
+        </View>
+        </ScrollView>
       </View>
 
       {/* Result Modal Overlay */}

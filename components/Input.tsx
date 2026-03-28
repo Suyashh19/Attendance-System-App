@@ -17,9 +17,8 @@ export function Input({ label, error, icon, className = '', ...props }: InputPro
         </Text>
       )}
       <View
-        className={`flex-row items-center bg-dark-card border rounded-xl px-4 h-12 ${
-          error ? 'border-danger' : 'border-dark-border focus:border-primary'
-        }`}
+        className="flex-row items-center bg-dark-card border rounded-xl px-4 h-12"
+        style={{ borderColor: error ? '#EF4444' : '#334155' }}
       >
         {icon && (
           <Ionicons

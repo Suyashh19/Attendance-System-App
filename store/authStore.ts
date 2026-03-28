@@ -19,6 +19,7 @@ interface AuthStore extends AuthState {
   logout: () => Promise<void>;
   setDeviceId: (deviceId: string) => void;
   hydrate: () => Promise<void>;
+  setUser: (user: User) => void;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -26,6 +27,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   token: null,
   deviceId: null,
   isAuthenticated: false,
+  isHydrated: false,
 
   login: async (token: string, user?: User) => {
     await storeToken(token);
@@ -88,9 +90,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       } else {
         set({ isAuthenticated: false });
       }
-    } catch (err) {
-      console.error('[AuthStore] Hydration failed:', err);
-      set({ token: null, user: null, isAuthenticated: false });
+    } finally {
+      set({ isHydrated: true });
     }
+  },
+  setUser: (user: User) => {
+    set({ user });
   },
 }));

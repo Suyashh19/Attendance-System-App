@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, ActivityIndicator, Alert, TouchableOpacity, Modal, TextInput } from 'react-native';
+import { View, Text, FlatList, RefreshControl, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   getMySubjects, 
   registerPushToken, 
   startSession, 
-  endSession, 
-  createSubject, 
-  enrollInSubject 
+  endSession 
 } from '../../services/attendance';
+import { CreateSubjectModal } from '../../components/CreateSubjectModal';
+import { EnrollModal } from '../../components/EnrollModal';
 import { SubjectCard } from '../../components/SubjectCard';
 import { FacultySessionModal } from '../../components/FacultySessionModal';
 import { SchedulingModal } from '../../components/SchedulingModal';
@@ -28,16 +28,16 @@ export default function HomeScreen() {
   const { getLocation } = useLocation();
   
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionData, setActiveSessionData] = useState<SessionStartedPayload | null>(null);
+  const [timeOffset, setTimeOffset] = useState<number>(0); // server - local
   const [facultyActiveSession, setFacultyActiveSession] = useState<any>(null);
   
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [schedulingSubject, setSchedulingSubject] = useState<Subject | null>(null);
-  
-  // Form States
-  const [newSubject, setNewSubject] = useState({ name: '', code: '' });
-  const [enrollCode, setEnrollCode] = useState('');
+
+  const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
   // ─── Fetch Subjects ──────────────────────────────────────────────────────────
@@ -45,6 +45,11 @@ export default function HomeScreen() {
     queryKey: ['subjects'],
     queryFn: getMySubjects,
   });
+
+  // Filter subjects based on selection
+  const filteredSubjects = user?.role === 'faculty' && selectedCategory
+    ? subjects.filter(s => s.type === selectedCategory)
+    : subjects;
 
   // ─── Push Notifications ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -58,12 +63,17 @@ export default function HomeScreen() {
   }, []);
 
   // ─── Socket.IO Real-time Events ─────────────────────────────────────────────
-  const subjectIds = subjects.map((s) => s.id);
+  const subjectIds = React.useMemo(() => subjects.map((s) => String(s.id)), [subjects]);
 
   useSocket({
     subjectIds,
     onSessionStarted: (data: SessionStartedPayload) => {
+      if (data.serverTime) {
+        const offset = new Date(data.serverTime).getTime() - Date.now();
+        setTimeOffset(offset);
+      }
       setActiveSessionId(data.sessionId);
+      setActiveSessionData(data);
       if (user?.role === 'student') {
         router.push({
           pathname: '/(tabs)/attendance',
@@ -74,12 +84,34 @@ export default function HomeScreen() {
     onSessionEnded: (data) => {
       if (activeSessionId === data.sessionId) {
         setActiveSessionId(null);
+        setActiveSessionData(null);
       }
       if (facultyActiveSession?.id === data.sessionId) {
         setFacultyActiveSession(null);
       }
     },
   });
+
+  // ─── Auto-expire session ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeSessionData) return;
+    
+    // Use a single interval to check expiry, and only update state if it actually expires
+    const expiryTime = new Date(activeSessionData.windowExpiry).getTime();
+    if (isNaN(expiryTime)) return;
+
+    const interval = setInterval(() => {
+      const nowSynced = Date.now() + timeOffset;
+      if (nowSynced > expiryTime) {
+        console.log('[DEBUG] Session expired in background. Clearing...');
+        setActiveSessionId(null);
+        setActiveSessionData(null);
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeSessionData?.sessionId, timeOffset]); // Only depend on sessionId to prevent re-runs on every data change
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
   const handleStartSessionPress = (subject: Subject) => {
@@ -88,7 +120,6 @@ export default function HomeScreen() {
 
   const handleConfirmSchedule = async (date: string, startTime: string, endTime: string) => {
     if (!schedulingSubject) return;
-    
     try {
       setIsActionLoading(true);
       const loc = await getLocation();
@@ -96,7 +127,6 @@ export default function HomeScreen() {
         Alert.alert('Location Required', 'Please enable GPS to start an attendance session.');
         return;
       }
-
       const session = await startSession({
         subjectId: schedulingSubject.id,
         date,
@@ -105,11 +135,7 @@ export default function HomeScreen() {
         latitude: loc.latitude,
         longitude: loc.longitude
       });
-
-      setFacultyActiveSession({
-        ...session,
-        subjectName: schedulingSubject.name
-      });
+      setFacultyActiveSession({ ...session, subjectName: schedulingSubject.name });
       setActiveSessionId(session.id);
       setSchedulingSubject(null);
     } catch (err: any) {
@@ -122,12 +148,11 @@ export default function HomeScreen() {
   const handleEndSession = async () => {
     if (!facultyActiveSession) return;
     try {
-      setIsActionLoading(true); // Added feedback
+      setIsActionLoading(true);
       await endSession(facultyActiveSession.id);
       setFacultyActiveSession(null);
       setActiveSessionId(null);
     } catch (err) {
-      // Logic for session already closed handled by backend idempotency now
       setFacultyActiveSession(null);
       setActiveSessionId(null);
     } finally {
@@ -135,36 +160,21 @@ export default function HomeScreen() {
     }
   };
 
-  const handleCreateSubject = async () => {
-    if (!newSubject.name || !newSubject.code) return;
-    try {
-      setIsActionLoading(true);
-      await createSubject(newSubject.name, newSubject.code);
-      setShowCreateModal(false);
-      setNewSubject({ name: '', code: '' });
-      queryClient.invalidateQueries({ queryKey: ['subjects'] });
-    } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to create subject');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
+  const handleCloseCreateModal = React.useCallback(() => setShowCreateModal(false), []);
+  const handleCloseEnrollModal = React.useCallback(() => setShowEnrollModal(false), []);
 
-  const handleEnroll = async () => {
-    if (!enrollCode) return;
-    try {
-      setIsActionLoading(true);
-      await enrollInSubject(enrollCode);
-      setShowEnrollModal(false);
-      setEnrollCode('');
-      queryClient.invalidateQueries({ queryKey: ['subjects'] });
-      Alert.alert('Success', 'Enrolled successfully!');
-    } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to enroll');
-    } finally {
-      setIsActionLoading(false);
-    }
-  };
+  const handleCreateSuccess = React.useCallback((type: 'theory' | 'practical') => {
+    setShowCreateModal(false);
+    setSelectedCategory(type);
+    queryClient.invalidateQueries({ queryKey: ['subjects'] });
+    Alert.alert('Success', 'Subject created successfully');
+  }, [queryClient]);
+
+  const handleEnrollSuccess = React.useCallback(() => {
+    setShowEnrollModal(false);
+    queryClient.invalidateQueries({ queryKey: ['subjects'] });
+    Alert.alert('Success', 'Enrolled successfully!');
+  }, [queryClient]);
 
   // ─── Renderers ──────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -191,7 +201,7 @@ export default function HomeScreen() {
   return (
     <View className="flex-1 bg-dark">
       <FlatList
-        data={subjects}
+        data={user?.role === 'faculty' && !selectedCategory ? [] : filteredSubjects}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         refreshControl={
@@ -206,8 +216,14 @@ export default function HomeScreen() {
           <View className="mb-6 mt-2">
             <View className="flex-row justify-between items-start mb-2">
               <View className="flex-1">
+                {selectedCategory ? (
+                  <TouchableOpacity onPress={() => setSelectedCategory(null)} className="flex-row items-center mb-2">
+                    <Ionicons name="chevron-back" size={20} color="#6366F1" />
+                    <Text className="text-primary font-bold ml-1">Back to Categories</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <Text className="text-3xl font-bold text-white">
-                  Hello, {user?.name?.split(' ')[0] || 'User'} 👋
+                  {selectedCategory ? (selectedCategory === 'theory' ? 'Theory Classes' : 'Practical Classes') : `Hello, ${user?.name?.split(' ')[0] || 'User'} 👋`}
                 </Text>
               </View>
               <TouchableOpacity 
@@ -225,39 +241,60 @@ export default function HomeScreen() {
             <Text className="text-dark-muted text-base">
               {user?.role === 'student'
                 ? "Waiting for a session to start. Keep this app open or wait for a push notification."
-                : "Manage your assigned classes:"}
+                : (selectedCategory ? `Managing your ${selectedCategory} subjects:` : "Select a category to manage your classes:")}
             </Text>
-            
-            {user?.role === 'student' && activeSessionId && (
-              <View className="mt-4 bg-success/10 p-4 rounded-xl border border-success/20 flex-row items-center">
-                <Ionicons name="radio" size={24} color="#10B981" className="mr-3" />
-                <View className="flex-1">
-                  <Text className="text-white font-bold mb-1">Session Live!</Text>
-                  <Text className="text-success/80 text-xs">
-                    Attendance is currently being taken. Join now.
-                  </Text>
-                </View>
-                <Button 
-                   title="Join" 
-                   onPress={() => refetch()} 
-                   size="sm" 
-                />
+
+            {user?.role === 'faculty' && !selectedCategory && (
+              <View className="flex-row gap-4 mt-8">
+                <TouchableOpacity 
+                  onPress={() => setSelectedCategory('theory')}
+                  className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-xl"
+                >
+                  <View className="bg-primary/20 p-4 rounded-2xl mb-4">
+                    <Ionicons name="book-outline" size={32} color="#6366F1" />
+                  </View>
+                  <Text className="text-white font-bold text-lg">Theory</Text>
+                  <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'theory').length} Subjects</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={() => setSelectedCategory('practical')}
+                  className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-xl"
+                >
+                  <View className="bg-success/20 p-4 rounded-2xl mb-4">
+                    <Ionicons name="flask-outline" size={32} color="#10B981" />
+                  </View>
+                  <Text className="text-white font-bold text-lg">Practical</Text>
+                  <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'practical').length} Subjects</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
         }
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center mt-20">
-            <Ionicons name="rocket-outline" size={64} color="#334155" className="mb-4" />
-            <Text className="text-dark-muted font-medium text-lg">🚀 No classes yet! Join using a subject code.</Text>
-            <TouchableOpacity 
+          <View className="flex-1 items-center justify-center mt-20 p-6">
+            <View className="bg-dark-card p-6 rounded-full mb-6 border border-dark-border">
+              <Ionicons 
+                name={user?.role === 'faculty' ? "school-outline" : "rocket-outline"} 
+                size={64} 
+                color="#6366F1" 
+              />
+            </View>
+            <Text className="text-white font-bold text-xl mb-2 text-center">
+              {user?.role === 'faculty' ? "No subjects created yet" : "No classes joined yet"}
+            </Text>
+            <Text className="text-dark-muted text-center mb-8 px-4">
+              {user?.role === 'faculty' 
+                ? "Start managing your attendance by creating your first subject module." 
+                : "Enter a subject code provided by your faculty to start tracking your attendance."}
+            </Text>
+            <Button 
+              title={user?.role === 'faculty' ? "Create Subject" : "Enroll in Class"}
               onPress={() => user?.role === 'faculty' ? setShowCreateModal(true) : setShowEnrollModal(true)}
-              className="mt-4"
-            >
-              <Text className="text-primary font-bold">
-                {user?.role === 'faculty' ? "+ Create your first subject" : "Enroll with a subject code"}
-              </Text>
-            </TouchableOpacity>
+              variant="primary"
+              className="w-full max-w-[200px]"
+              icon={user?.role === 'faculty' ? "add" : "enter"}
+            />
           </View>
         }
         renderItem={({ item }) => (
@@ -269,77 +306,19 @@ export default function HomeScreen() {
         )}
       />
 
-      {/* Create Subject Modal */}
-      <Modal visible={showCreateModal} animationType="fade" transparent>
-        <View className="flex-1 bg-black/60 justify-center p-6">
-          <View className="bg-dark-card rounded-3xl p-6 border border-dark-border">
-            <Text className="text-xl font-bold text-white mb-4">Create New Subject</Text>
-            <TextInput
-              placeholder="Subject Name (e.g. Distributed Systems)"
-              placeholderTextColor="#64748B"
-              className="bg-dark p-4 rounded-xl text-white mb-4 border border-dark-border"
-              value={newSubject.name}
-              onChangeText={(t) => setNewSubject({ ...newSubject, name: t })}
-            />
-            <TextInput
-              placeholder="Subject Code (e.g. CS402)"
-              placeholderTextColor="#64748B"
-              className="bg-dark p-4 rounded-xl text-white mb-6 border border-dark-border"
-              value={newSubject.code}
-              onChangeText={(t) => setNewSubject({ ...newSubject, code: t })}
-              autoCapitalize="characters"
-            />
-            <View className="flex-row">
-              <TouchableOpacity 
-                onPress={() => setShowCreateModal(false)}
-                className="flex-1 items-center p-4"
-              >
-                <Text className="text-dark-muted font-bold">Cancel</Text>
-              </TouchableOpacity>
-              <Button 
-                title="Create" 
-                onPress={handleCreateSubject} 
-                className="flex-1" 
-                loading={isActionLoading}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Modals */}
+      <CreateSubjectModal 
+        visible={showCreateModal}
+        onClose={handleCloseCreateModal}
+        onSuccess={handleCreateSuccess}
+      />
 
-      {/* Enroll Modal */}
-      <Modal visible={showEnrollModal} animationType="fade" transparent>
-        <View className="flex-1 bg-black/60 justify-center p-6">
-          <View className="bg-dark-card rounded-3xl p-6 border border-dark-border">
-            <Text className="text-xl font-bold text-white mb-4">Enroll in Class</Text>
-            <Text className="text-dark-muted mb-4">Enter the subject code provided by your faculty.</Text>
-            <TextInput
-              placeholder="Enter Code (e.g. IT101)"
-              placeholderTextColor="#64748B"
-              className="bg-dark p-4 rounded-xl text-white mb-6 border border-dark-border text-center text-lg font-bold"
-              value={enrollCode}
-              onChangeText={setEnrollCode}
-              autoCapitalize="characters"
-            />
-            <View className="flex-row">
-              <TouchableOpacity 
-                onPress={() => setShowEnrollModal(false)}
-                className="flex-1 items-center p-4"
-              >
-                <Text className="text-dark-muted font-bold">Cancel</Text>
-              </TouchableOpacity>
-              <Button 
-                title="Enroll" 
-                onPress={handleEnroll} 
-                className="flex-1" 
-                loading={isActionLoading}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <EnrollModal 
+        visible={showEnrollModal}
+        onClose={handleCloseEnrollModal}
+        onSuccess={handleEnrollSuccess}
+      />
 
-      {/* Faculty Live Session View */}
       <FacultySessionModal
         visible={!!facultyActiveSession}
         subjectName={facultyActiveSession?.subjectName || ''}
@@ -347,7 +326,6 @@ export default function HomeScreen() {
         onEndSession={handleEndSession}
       />
 
-      {/* Scheduling Modal */}
       <SchedulingModal
         visible={!!schedulingSubject}
         subject={schedulingSubject}

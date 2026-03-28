@@ -1,6 +1,13 @@
 import React from 'react';
 import { View, Text, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { 
+  FadeIn, 
+  FadeInUp,
+  FadeOut, 
+  ZoomIn,
+} from 'react-native-reanimated';
+
 import type { AttendanceStatus } from '../types';
 import { Button } from './Button';
 
@@ -53,6 +60,14 @@ export function AttendanceResultModal({
           title: 'Invalid Attempt',
           desc: message || 'Proxy detected. Device and location mismatch.',
         };
+      case 'EXPIRED':
+        return {
+          color: '#F59E0B', // warning
+          bg: 'bg-warning/10',
+          icon: 'hourglass-outline',
+          title: 'Time Expired',
+          desc: message || 'No code was selected within the time limit.',
+        };
       default:
         return {
           color: '#FFFFFF',
@@ -67,11 +82,16 @@ export function AttendanceResultModal({
   const config = getConfig();
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="none">
       <View className="flex-1 bg-black/80 items-center justify-center p-6">
-        <View className="bg-dark-card w-full rounded-3xl p-6 border border-dark-border items-center">
+        <Animated.View 
+          entering={ZoomIn.duration(300)}
+          exiting={FadeOut.duration(200)}
+          className="bg-dark-card w-full rounded-3xl p-6 border border-dark-border items-center shadow-2xl"
+        >
           
-          <View 
+          <Animated.View 
+            entering={FadeInUp.delay(200).duration(400)}
             className={`w-24 h-24 rounded-full items-center justify-center mb-6`}
             style={{ backgroundColor: `${config.color}20` }}
           >
@@ -80,7 +100,7 @@ export function AttendanceResultModal({
             ) : (
               <Ionicons name={config.icon as any} size={64} color={config.color} />
             )}
-          </View>
+          </Animated.View>
 
           <Text className="text-2xl font-bold text-white mb-3 text-center">
             {config.title}
@@ -91,14 +111,16 @@ export function AttendanceResultModal({
           </Text>
 
           {status !== 'LOADING' && (
-            <Button
-              title="Back to Home"
-              onPress={onDismiss}
-              className="w-full"
-              variant="outline"
-            />
+            <Animated.View entering={FadeIn.delay(400)} className="w-full">
+              <Button
+                title="Back to Home"
+                onPress={onDismiss}
+                className="w-full"
+                variant="outline"
+              />
+            </Animated.View>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

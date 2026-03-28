@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { VerificationState } from '../types';
 
@@ -9,10 +9,8 @@ interface VerificationStatusProps {
 
 export function VerificationStatus({ state }: VerificationStatusProps) {
   const items = [
-    { key: 'sessionActive', label: 'Session Active', icon: 'radio-outline' as const },
-    { key: 'deviceMatched', label: 'Device Matched', icon: 'phone-portrait-outline' as const },
-    { key: 'locationVerified', label: 'Location Verified', icon: 'location-outline' as const },
-    { key: 'timeValid', label: 'Time Window', icon: 'timer-outline' as const },
+    { key: 'deviceMatched', label: 'Device ID', icon: 'phone-portrait-outline' as const, color: '#F43F5E' },
+    { key: 'locationVerified', label: 'Local GPS', icon: 'location-outline' as const, color: '#0EA5E9' },
   ];
 
   return (
@@ -39,9 +37,12 @@ export function VerificationStatus({ state }: VerificationStatusProps) {
           }
 
           return (
-            <View key={key} className="w-[48%] mb-4 flex-row items-center p-2 rounded-xl bg-[#0F172A]">
-              <View className="bg-dark-card p-2 rounded-full mr-3 border border-dark-border">
-                <Ionicons name={icon} size={18} color="#6366F1" />
+            <View key={key} className="w-[48%] mb-4 flex-row items-center p-2 rounded-xl bg-[#0F172A] border border-dark-border/50">
+              <View 
+                className="p-2 rounded-full mr-3 border"
+                style={{ backgroundColor: `${color}10`, borderColor: `${color}30` }}
+              >
+                <Ionicons name={icon} size={18} color={color} />
               </View>
               <View className="flex-1">
                 <Text className="text-dark-muted text-xs font-medium mb-1">{label}</Text>

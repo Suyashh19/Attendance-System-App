@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ButtonProps {
   title: string;
@@ -9,6 +10,7 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   className?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
 }
 
 export function Button({
@@ -19,6 +21,7 @@ export function Button({
   loading = false,
   disabled = false,
   className = '',
+  icon,
 }: ButtonProps) {
   const baseClasses = 'flex-row items-center justify-center rounded-xl overflow-hidden';
   
@@ -47,16 +50,25 @@ export function Button({
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.8}
-      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${
-        disabled || loading ? 'opacity-60' : 'opacity-100'
-      } ${className}`}
+      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      style={{ opacity: disabled || loading ? 0.6 : 1 }}
     >
       {loading ? (
         <ActivityIndicator color={variant === 'outline' ? '#6366F1' : '#FFFFFF'} />
       ) : (
-        <Text className={`${textClasses[variant]} text-center tracking-wide`}>
-          {title}
-        </Text>
+        <View className="flex-row items-center">
+          {icon && (
+            <Ionicons 
+              name={icon} 
+              size={18} 
+              color={variant === 'outline' ? '#6366F1' : '#FFFFFF'} 
+              className="mr-2" 
+            />
+          )}
+          <Text className={`${textClasses[variant]} text-center tracking-wide`}>
+            {title}
+          </Text>
+        </View>
       )}
     </TouchableOpacity>
   );

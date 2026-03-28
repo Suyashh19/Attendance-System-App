@@ -7,6 +7,7 @@ export interface User {
   email: string;
   role: UserRole;
   deviceId?: string;
+  prn?: string;
 }
 
 export interface AuthState {
@@ -14,6 +15,7 @@ export interface AuthState {
   token: string | null;
   deviceId: string | null;
   isAuthenticated: boolean;
+  isHydrated: boolean;
 }
 
 export interface LoginPayload {
@@ -26,6 +28,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   role: UserRole;
+  prn?: string;
 }
 
 export interface AuthResponse {
@@ -35,11 +38,14 @@ export interface AuthResponse {
 
 // ─── Subjects ────────────────────────────────────────────────────────────────
 export interface Subject {
-  id: string;
+  id: number;
   name: string;
   code: string;
-  facultyId: string;
-  facultyName?: string;
+  facultyId: number;
+  type: 'theory' | 'practical';
+  _count?: {
+    enrollments: number;
+  };
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -51,8 +57,9 @@ export interface AttendanceSession {
   options: string[];          // shuffled - includes correct + fakes
   facultyLatitude: number;
   facultyLongitude: number;
-  startedAt: string;          // ISO timestamp
+  startTime: string;          // ISO timestamp
   windowSeconds: number;      // 15
+  serverTime?: string;        // ISO timestamp
 }
 
 // ─── Attendance Submission ────────────────────────────────────────────────────
@@ -62,15 +69,18 @@ export interface SubmitAttendancePayload {
   deviceId: string;
   latitude: number;
   longitude: number;
+  accuracy?: number;
 }
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED';
 
 export interface AttendanceResult {
   status: AttendanceStatus;
   message?: string;
-  sessionId?: string;
+  attendance?: any;
+  sessionId: string;
+  serverTime?: string;
 }
 
 // ─── History ─────────────────────────────────────────────────────────────────
@@ -101,8 +111,10 @@ export interface SessionStartedPayload {
   options: string[];
   facultyLatitude: number;
   facultyLongitude: number;
-  startedAt: string;
+  startTime: string;
+  windowExpiry: string;
   windowSeconds: number;
+  serverTime: string;
 }
 
 export interface SessionEndedPayload {
@@ -122,4 +134,26 @@ export interface ApiResponse<T = unknown> {
   data?: T;
   message?: string;
   error?: string;
+}
+
+export interface HistoryRecord {
+  id: number;
+  status: 'PRESENT' | 'ABSENT' | 'INVALID';
+  date: string;
+  reason?: string;
+  submittedAt?: string;
+}
+
+export interface SubjectHistory {
+  id: number;
+  name: string;
+  code: string;
+  type: 'theory' | 'practical';
+  records: HistoryRecord[];
+  stats: {
+    PRESENT: number;
+    ABSENT: number;
+    INVALID: number;
+    total: number;
+  };
 }

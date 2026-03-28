@@ -56,7 +56,7 @@ export function useLocation(): UseLocationReturn {
 
       // Fall back to fresh GPS
       const fresh = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
       });
       const data: LocationData = {
         latitude: fresh.coords.latitude,

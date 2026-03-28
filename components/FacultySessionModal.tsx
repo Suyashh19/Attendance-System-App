@@ -17,13 +17,11 @@ export function FacultySessionModal({
   correctCode, 
   onEndSession 
 }: FacultySessionModalProps) {
-  const [timeLeft, setTimeLeft] = useState(15);
+  // Stable callback for timer
+  const handleTimerComplete = React.useCallback(() => {
+    console.log('[DEBUG] Faculty timer expired');
+  }, []);
 
-  useEffect(() => {
-    if (visible) {
-      setTimeLeft(15);
-    }
-  }, [visible]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -44,10 +42,11 @@ export function FacultySessionModal({
 
           <View style={styles.timerContainer}>
             <CountdownTimer 
+              key={visible ? 'active' : 'inactive'}
               duration={15} 
               size={120} 
               strokeWidth={8}
-              onComplete={() => {}} 
+              onComplete={handleTimerComplete} 
             />
             <Text style={styles.timerSubtext}>Remaining time for submissions</Text>
           </View>

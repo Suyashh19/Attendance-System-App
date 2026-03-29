@@ -17,6 +17,14 @@ export async function enrollInSubject(code: string): Promise<void> {
   await api.post(API_ROUTES.ENROLLMENTS.ENROLL, { subjectCode: code });
 }
 
+export async function deleteSubject(subjectId: number): Promise<void> {
+  await api.delete(API_ROUTES.SUBJECTS.DELETE(subjectId));
+}
+
+export async function unenrollSubject(subjectId: number): Promise<void> {
+  await api.delete(API_ROUTES.ENROLLMENTS.UNENROLL(subjectId));
+}
+
 // ─── Session Management (Faculty) ─────────────────────────────────────────────
 
 interface StartSessionParams {

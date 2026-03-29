@@ -8,13 +8,28 @@ A production-ready **React Native (Expo)** application designed to prevent proxy
 
 This app is the student-facing terminal for the attendance system. The flow is as follows:
 
-1. **Authentication & Binding**: On first login, the app generates a unique Cryptographic Device ID (`UUID v4`) and stores it securely using `expo-secure-store`. This ID binds the user to their physical device to prevent proxying by sharing accounts.
+1. **Hardware-Anchored Binding**: On first login, instead of relying on easily-wiped local storage, the app uses `expo-application` to extract the unchangeable, physical hardware ID of the phone (`ANDROID_ID` or Apple `IDFV`). This immutable ID binds the user to their physical device, mathematically preventing proxying via account sharing across devices.
 2. **Real-Time Connection**: The app connects to the backend via `Socket.IO` using JWT authentication. It listens for the `session_started` event on the student's enrolled subjects.
-3. **The 15-Second Window**: When a professor starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
-4. **Data Collection**: During these 15 seconds, the app immediately fetches the `expo-location` (using a <30s cache for speed, falling back to fresh GPS).
+3. **The 15-Second Window**: When a faculty member starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
+4. **Unblocked Data Collection**: The UI is fully non-blocking. Students can instantly see and select attendance codes while an ultra-high-accuracy `expo-location` GPS lock silently negotiates in the background. If the timer expires while fetching GPS, the submission is "locked in" and given extra buffer time to finalize the location.
 5. **Multi-Layer Validation**: The student must select the correct 3-digit code from 4 shuffled options on the screen *(looking at the professor's board)*. 
 6. **Submission**: The payload `{ sessionId, selectedCode, deviceId, latitude, longitude }` is sent to the backend.
-7. **Result Broadcast**: The backend verifies distance (geofencing) and code strictness, then drops the result (`PRESENT`, `ABSENT`, or `INVALID` proxy attempt) directly back to the app via a private socket room.
+7. **Result Broadcast**: The backend verifies distance (strictly geofenced), hardware ID signatures, and code validity, then drops the result (`PRESENT`, `ABSENT`, or `INVALID` proxy attempt) directly back to the app via a private socket room.
+
+---
+
+## ✨ Features
+
+### Faculty Capabilities
+- **Create & Manage Classes**: Organize by Theory or Practical modules.
+- **Start Real-Time Sessions**: Open 15-second geofenced attendance windows broadcasted to all enrolled students.
+- **Clean Cascade Deletions**: Definitively delete a class, triggering a `prisma.$transaction` that inherently sweeps all associated sessions, enrollments, and attendance logs.
+- **Download Excel Reports**: Export a cleanly formatted (Roll No removed, PRN standardized) Excel matrix of student attendance directly to your device storage.
+
+### Student Capabilities
+- **Zero-Friction Joining**: Enroll into subjects via a simple Subject Code.
+- **Graceful Unenrollment**: Leave a class at any time (removing your targeted attendance footprint).
+- **Fraud-Proof Verification**: Lock your account strictly to your physical device. Logouts and app re-installs respect the hardware anchor.
 
 ---
 
@@ -29,10 +44,10 @@ This app is the student-facing terminal for the attendance system. The flow is a
 - **Forms & Validation**: React Hook Form + Zod
 - **Real-Time**: Socket.IO-Client
 - **Native APIs**: 
-  - `expo-location` (GPS Tracking)
-  - `expo-secure-store` (Encrypted JWT + Device ID persistence)
-  - `expo-notifications` (Push Token Generation)
-  - `expo-device` & `expo-crypto` (Unique hardware binding)
+  - `expo-location` (High-Accuracy & Hybrid GPS Tracking)
+  - `expo-secure-store` (Encrypted JWT Token persistence)
+  - `expo-application` (Physical Hardware Anchors for Anti-Fraud)
+  - `expo-sharing` & `expo-file-system` (Excel Export generation)
 
 ---
 

@@ -8,6 +8,7 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { registerUser, loginUser } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
+import { useDeviceId } from '../../hooks/useDeviceId';
 import { Ionicons } from '@expo/vector-icons';
 import type { UserRole } from '../../types';
 
@@ -33,6 +34,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
+  const deviceId = useDeviceId();
 
   const {
     control,
@@ -53,16 +55,22 @@ export default function RegisterScreen() {
   const selectedRole = watch('role');
 
   const onSubmit = async (data: RegisterFormData) => {
+    if (!deviceId) {
+      Alert.alert('Registration Failed', 'Unable to fetch device ID. Please restart the app and try again.');
+      return;
+    }
+
     try {
       setLoading(true);
       // 1. Register the user
-      const registerRes = await registerUser(data);
+      const registerRes = await registerUser({ ...data, deviceId });
       
       // 2. Since register doesn't return a token on this backend, 
       // we must log in manually to get the session token
       const loginRes = await loginUser({ 
         email: data.email, 
-        password: data.password 
+        password: data.password,
+        deviceId: deviceId || undefined
       });
       
       // 3. Save session and redirect

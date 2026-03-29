@@ -21,6 +21,7 @@ export interface AuthState {
 export interface LoginPayload {
   email: string;
   password: string;
+  deviceId?: string;
 }
 
 export interface RegisterPayload {
@@ -29,6 +30,7 @@ export interface RegisterPayload {
   password: string;
   role: UserRole;
   prn?: string;
+  deviceId?: string;
 }
 
 export interface AuthResponse {
@@ -70,6 +72,7 @@ export interface SubmitAttendancePayload {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  isRetry?: boolean;
 }
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
@@ -78,6 +81,7 @@ export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED';
 export interface AttendanceResult {
   status: AttendanceStatus;
   message?: string;
+  reason?: string;
   attendance?: any;
   sessionId: string;
   serverTime?: string;

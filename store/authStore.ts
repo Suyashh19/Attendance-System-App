@@ -50,7 +50,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   logout: async () => {
     await clearToken();
-    await SecureStore.deleteItemAsync('device_id').catch(() => null);
     disconnectSocket();
     set({ token: null, user: null, isAuthenticated: false, deviceId: null });
   },

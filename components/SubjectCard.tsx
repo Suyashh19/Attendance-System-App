@@ -8,9 +8,11 @@ interface SubjectCardProps {
   subject: Subject;
   sessionActive?: boolean;
   onStartSession?: () => void;
+  onDelete?: () => void;
+  onUnenroll?: () => void;
 }
 
-export function SubjectCard({ subject, sessionActive = false, onStartSession }: SubjectCardProps) {
+export function SubjectCard({ subject, sessionActive = false, onStartSession, onDelete, onUnenroll }: SubjectCardProps) {
   const user = useAuthStore((s) => s.user);
   const isFaculty = user?.role === 'faculty';
 
@@ -27,24 +29,42 @@ export function SubjectCard({ subject, sessionActive = false, onStartSession }: 
         <Text className="text-dark-muted text-sm font-medium">{subject.code}</Text>
       </View>
 
-      <View className="items-end">
-        {sessionActive ? (
-          <View className="bg-success/20 px-3 py-1 rounded-full flex-row items-center">
-            <View className="w-2 h-2 rounded-full bg-success mr-2 animate-pulse" />
-            <Text className="text-success text-xs font-bold">LIVE</Text>
-          </View>
-        ) : isFaculty ? (
+      <View className="flex-row items-center ml-2">
+        <View className="items-end mr-3">
+          {sessionActive ? (
+            <View className="bg-success/20 px-3 py-1 rounded-full flex-row items-center">
+              <View className="w-2 h-2 rounded-full bg-success mr-2 animate-pulse" />
+              <Text className="text-success text-xs font-bold">LIVE</Text>
+            </View>
+          ) : isFaculty ? (
+            <TouchableOpacity 
+              onPress={onStartSession}
+              className="bg-primary px-3 py-2 rounded-xl flex-row items-center"
+            >
+              <Ionicons name="play" size={14} color="white" className="mr-1" />
+              <Text className="text-white text-xs font-bold">START</Text>
+            </TouchableOpacity>
+          ) : (
+            <View className="bg-dark-border px-3 py-1 rounded-full">
+              <Text className="text-dark-muted text-xs font-bold">OFFLINE</Text>
+            </View>
+          )}
+        </View>
+
+        {isFaculty ? (
           <TouchableOpacity 
-            onPress={onStartSession}
-            className="bg-primary px-3 py-2 rounded-xl flex-row items-center"
+            onPress={onDelete}
+            className="bg-danger/10 p-2 rounded-xl border border-danger/20"
           >
-            <Ionicons name="play" size={14} color="white" className="mr-1" />
-            <Text className="text-white text-xs font-bold">START</Text>
+            <Ionicons name="trash-outline" size={18} color="#EF4444" />
           </TouchableOpacity>
         ) : (
-          <View className="bg-dark-border px-3 py-1 rounded-full">
-            <Text className="text-dark-muted text-xs font-bold">OFFLINE</Text>
-          </View>
+          <TouchableOpacity 
+            onPress={onUnenroll}
+            className="bg-danger/10 p-2 rounded-xl border border-danger/20"
+          >
+            <Ionicons name="exit-outline" size={18} color="#EF4444" />
+          </TouchableOpacity>
         )}
       </View>
     </View>

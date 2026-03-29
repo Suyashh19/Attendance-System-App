@@ -8,7 +8,7 @@
     "scheme": "attendance-system",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/favicon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0F172A"
     },
@@ -65,8 +65,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2ff19f5e-e999-432f-bb8d-c3326fc19b06"
+        "projectId": "a4705414-8542-479c-ab98-f49df4edbd64"
       }
-    }
+    },
+    "owner": "sp177"
   }
 }

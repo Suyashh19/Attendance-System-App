@@ -8,6 +8,7 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { loginUser } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
+import { useDeviceId } from '../../hooks/useDeviceId';
 import { Ionicons } from '@expo/vector-icons';
 
 const loginSchema = z.object({
@@ -21,6 +22,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
+  const deviceId = useDeviceId();
 
   const {
     control,
@@ -37,7 +39,7 @@ export default function LoginScreen() {
   const onSubmit = async (data: LoginFormData) => {
     try {
       setLoading(true);
-      const res = await loginUser({ email: data.email, password: data.password });
+      const res = await loginUser({ email: data.email, password: data.password, deviceId: deviceId || undefined });
       
       // Zustand store login (saves token + sets auth state)
       await login(res.token, res.user);

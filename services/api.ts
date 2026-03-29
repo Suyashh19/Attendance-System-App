@@ -12,10 +12,12 @@ export const API_ROUTES = {
   SUBJECTS: {
     MY: '/subjects/my',
     CREATE: '/subjects',
+    DELETE: (id: number) => `/subjects/${id}`,
   },
   ENROLLMENTS: {
     ENROLL: '/enrollments/enroll',
     BY_SUBJECT: (id: number) => `/enrollments/${id}`,
+    UNENROLL: (id: number) => `/enrollments/${id}/unenroll`,
   },
   SESSIONS: {
     START: '/sessions/start',

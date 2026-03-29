@@ -6,7 +6,9 @@ import {
   getMySubjects, 
   registerPushToken, 
   startSession, 
-  endSession 
+  endSession,
+  deleteSubject,
+  unenrollSubject
 } from '../../services/attendance';
 import { CreateSubjectModal } from '../../components/CreateSubjectModal';
 import { EnrollModal } from '../../components/EnrollModal';
@@ -25,7 +27,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
-  const { getLocation } = useLocation();
+  const { getLocation, getHighAccuracyPosition } = useLocation();
   
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeSessionData, setActiveSessionData] = useState<SessionStartedPayload | null>(null);
@@ -39,6 +41,7 @@ export default function HomeScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<string | null>(null);
 
   // ─── Fetch Subjects ──────────────────────────────────────────────────────────
   const { data: subjects = [], isLoading, isError, refetch } = useQuery({
@@ -122,11 +125,15 @@ export default function HomeScreen() {
     if (!schedulingSubject) return;
     try {
       setIsActionLoading(true);
-      const loc = await getLocation();
+      
+      // Use the high-accuracy strategy for faculty (<= 30m, 3 retries)
+      const loc = await getHighAccuracyPosition((status: string) => setLocationStatus(status));
+      
       if (!loc) {
-        Alert.alert('Location Required', 'Please enable GPS to start an attendance session.');
+        Alert.alert('Location Error', 'Unable to access GPS. Please check permissions.');
         return;
       }
+
       const session = await startSession({
         subjectId: schedulingSubject.id,
         date,
@@ -135,6 +142,7 @@ export default function HomeScreen() {
         latitude: loc.latitude,
         longitude: loc.longitude
       });
+      
       setFacultyActiveSession({ ...session, subjectName: schedulingSubject.name });
       setActiveSessionId(session.id);
       setSchedulingSubject(null);
@@ -142,6 +150,7 @@ export default function HomeScreen() {
       Alert.alert('Error', err.response?.data?.error || 'Failed to start session');
     } finally {
       setIsActionLoading(false);
+      setLocationStatus(null);
     }
   };
 
@@ -175,6 +184,56 @@ export default function HomeScreen() {
     queryClient.invalidateQueries({ queryKey: ['subjects'] });
     Alert.alert('Success', 'Enrolled successfully!');
   }, [queryClient]);
+
+  const handleDeleteSubject = (subject: Subject) => {
+    Alert.alert(
+      'Delete Subject',
+      `Are you sure you want to delete "${subject.name}"? This will permanently wipe all attendance data for this class.\n\nNote: If you want to keep a record of this data, you should go to Reports (or History) to download the Excel file first.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Subject', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsActionLoading(true);
+              await deleteSubject(subject.id);
+              queryClient.invalidateQueries({ queryKey: ['subjects'] });
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.error || 'Failed to delete subject');
+            } finally {
+              setIsActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleUnenrollSubject = (subject: Subject) => {
+    Alert.alert(
+      'Leave Class',
+      `Are you sure you want to unenroll from "${subject.name}"? This will remove your attendance record for this subject.\n\nNote: If you want to save your current attendance, you can download your data from the Reports section before leaving.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Unenroll Subject', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsActionLoading(true);
+              await unenrollSubject(subject.id);
+              queryClient.invalidateQueries({ queryKey: ['subjects'] });
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.error || 'Failed to unenroll');
+            } finally {
+              setIsActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   // ─── Renderers ──────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -280,12 +339,11 @@ export default function HomeScreen() {
                 color="#6366F1" 
               />
             </View>
-            <Text className="text-white font-bold text-xl mb-2 text-center">
-              {user?.role === 'faculty' ? "No subjects created yet" : "No classes joined yet"}
-            </Text>
+            {/* Removed empty state title text */}
+
             <Text className="text-dark-muted text-center mb-8 px-4">
               {user?.role === 'faculty' 
-                ? "Start managing your attendance by creating your first subject module." 
+                ? "Start managing your attendance. " 
                 : "Enter a subject code provided by your faculty to start tracking your attendance."}
             </Text>
             <Button 
@@ -302,6 +360,8 @@ export default function HomeScreen() {
             subject={item} 
             sessionActive={activeSessionId === String(item.id)} 
             onStartSession={() => handleStartSessionPress(item)}
+            onDelete={() => handleDeleteSubject(item)}
+            onUnenroll={() => handleUnenrollSubject(item)}
           />
         )}
       />
@@ -334,10 +394,16 @@ export default function HomeScreen() {
         loading={isActionLoading}
       />
       
-      {/* Global Activity Indicator for actions */}
-      {isActionLoading && !showCreateModal && !showEnrollModal && (
-        <View className="absolute inset-0 bg-black/20 items-center justify-center">
+      {/* Global Activity Indicator for actions with Status */}
+      {(isActionLoading || locationStatus) && !showCreateModal && !showEnrollModal && (
+        <View className="absolute inset-0 bg-black/60 items-center justify-center p-6">
           <ActivityIndicator size="large" color="#6366F1" />
+          {locationStatus && (
+            <Text className="text-white font-bold mt-4 text-center">{locationStatus}</Text>
+          )}
+          {isActionLoading && !locationStatus && (
+            <Text className="text-white font-bold mt-4 text-center">Starting Session...</Text>
+          )}
         </View>
       )}
     </View>

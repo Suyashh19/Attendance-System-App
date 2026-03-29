@@ -24,15 +24,16 @@ export default function AttendanceScreen() {
   const params = useLocalSearchParams();
   const { user } = useAuthStore();
   
-  // Guard: Only students should be here
-  if (user?.role !== 'student') {
-    router.replace('/(tabs)/home');
-    return null;
-  }
+  // Guard: Redirect non-students
+  useEffect(() => {
+    if (user && user.role !== 'student') {
+      router.replace('/(tabs)/home');
+    }
+  }, [user, router]);
 
   const [sessionData, setSessionData] = useState<SessionStartedPayload | null>(null);
   const deviceId = useDeviceId();
-  const { location, getLocation, error: locationError } = useLocation();
+  const { location, getLocation, getHybridPosition, error: locationError } = useLocation();
   const queryClient = useQueryClient();
 
   // Selected code & submission state
@@ -54,6 +55,7 @@ export default function AttendanceScreen() {
   const [timeOffset, setTimeOffset] = useState<number>(0);
   const [initialTimeLeft, setInitialTimeLeft] = useState<number>(15);
   const isTransitioning = useRef(false);
+  const selectionTimeRef = useRef<number>(0);
 
   // ─── 3. Handlers ────────────────────────────────────────────────────────
   const handleTimeComplete = useCallback(() => {
@@ -168,43 +170,31 @@ export default function AttendanceScreen() {
     if (!sessionData || sessionState !== 'IDLE' || resultStatus) return;
 
     let isMounted = true;
-    let retryCount = 0;
-    const MAX_RETRIES = 5;
 
-    const pollLocation = async () => {
-      if (!isMounted || sessionState !== 'IDLE' || resultStatus) return;
+    const resolveInitialLocation = async () => {
+      if (!isMounted) return;
       
-      console.log(`[DEBUG] Polling GPS (Attempt ${retryCount + 1})...`);
-      const loc = await getLocation();
+      console.log('[DEBUG] Resolving hybrid GPS for student...');
+      const loc = await getHybridPosition();
 
-      if (loc && isMounted) {
-        const isHighlyAccurate = loc.accuracy && loc.accuracy < 60;
-        console.log(`[DEBUG] GPS accuracy: ${loc.accuracy}m. Verified: ${isHighlyAccurate}`);
+      if (isMounted) {
+        // Validation: Accuracy <= 50m
+        const isValid = loc && loc.accuracy && loc.accuracy <= 50;
         
-        const isFinalAttempt = retryCount >= MAX_RETRIES;
-        
-        if (isHighlyAccurate || isFinalAttempt) {
-           setVerification((prev) => ({
-            ...prev,
-            locationVerified: isHighlyAccurate ? true : false,
-          }));
-          // Transition to ACTIVE now that GPS is resolved (either success or final fail)
-          setSessionState('ACTIVE');
-        } else {
-          // Retry
-          retryCount++;
-          setTimeout(pollLocation, 2000);
-        }
-      } else if (isMounted) {
-        setVerification((prev) => ({ ...prev, locationVerified: false }));
-        setSessionState('ACTIVE'); // Proceed to active even if failed, so they can select a code (if possible)
+        setVerification((prev) => ({
+          ...prev,
+          locationVerified: isValid ? true : null, // null means we'll retry later if needed
+        }));
+
+        // ALWAYS transition to ACTIVE after hybrid check (capped at 3s)
+        setSessionState('ACTIVE');
       }
     };
 
-    pollLocation();
+    resolveInitialLocation();
 
     return () => { isMounted = false; };
-  }, [sessionData, sessionState, resultStatus, getLocation]);
+  }, [sessionData, sessionState, resultStatus, getHybridPosition]);
 
   // ─── 2.5 Update verification status based on final result ──────────────
   useEffect(() => {
@@ -254,37 +244,83 @@ export default function AttendanceScreen() {
   });
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
-  const handleSubmit = async (code: string) => {
-    if (!sessionData || !deviceId || !location || sessionState !== 'ACTIVE' || !code) return;
+  const handleSubmit = async (code: string, isRetryAttempt = false) => {
+    if (!sessionData || sessionState === 'EXPIRED' || sessionState === 'LOCKED' || !code) return;
+
+    if (!deviceId) {
+      Alert.alert('Error', 'Unable to verify device ID. Please restart the app to mark attendance.');
+      return;
+    }
 
     setSelectedCode(code);
     setIsSubmitting(true);
     setResultStatus('LOADING');
+    
+    if (!isRetryAttempt) {
+      selectionTimeRef.current = Date.now();
+    } else {
+      setResultMessage('Improving accuracy... One more attempt...');
+    }
 
     try {
-      // 1. Submit via REST
+      // 1. Get/Resolve Location (Initial or Reuse)
+      const currentLoc = location || await getHybridPosition();
+      
+      // 2. Validate Accuracy Cap (Absolute rule: 100m)
+      if (!currentLoc || (currentLoc.accuracy && currentLoc.accuracy > 100)) {
+        setIsSubmitting(false);
+        setResultStatus('INVALID');
+        setResultMessage('Location signal too weak. Please move near a window or outdoors.');
+        return;
+      }
+
+      // 3. Submit via REST
       const result = await submitAttendance({
         sessionId: sessionData.sessionId,
         selectedCode: code,
         deviceId: deviceId,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        accuracy: location.accuracy ?? undefined,
+        latitude: currentLoc.latitude,
+        longitude: currentLoc.longitude,
+        accuracy: currentLoc.accuracy ?? undefined,
+        isRetry: isRetryAttempt,
       });
 
-      // 2. If REST returns immediate final status, update UI instantly (Real-time Sync)
+      // 4. Handle Conditional Retry
+      if (result.status === ('RETRY_REQUIRED' as any)) {
+        console.log('[DEBUG] Backend requested retry. Fetching fresh high-accuracy GPS...');
+        setResultMessage('Accuracy low. Fetching fresh GPS for final attempt...');
+        
+        // Fetch fresh high-accuracy GPS (3s limit)
+        const freshLoc = await getHybridPosition(); 
+        
+        // Strict Validation for Retry:
+        // A. Max Accuracy 50m
+        // B. Anti-Movement/Spoof Timestamp Check (Selection + 2s)
+        const isAccuracyOk = freshLoc && freshLoc.accuracy && freshLoc.accuracy <= 50;
+        const isTimeOk = freshLoc && freshLoc.timestamp <= selectionTimeRef.current + 2500; // 2.5s tolerance
+
+        if (!isAccuracyOk || !isTimeOk) {
+            setResultStatus('INVALID');
+            setResultMessage(!isAccuracyOk ? 'Retry failed: Poor accuracy (>50m).' : 'Retry failed: Stale location detected.');
+            setIsSubmitting(false);
+            return;
+        }
+        
+        // Re-submit with retry flag and the fresh validated location
+        return handleSubmit(code, true);
+      }
+
+      // 5. Final Result Update
       if (result.status) {
-        console.log('[DEBUG] REST submission returned immediate result:', result);
         setResultStatus(result.status);
-        setResultMessage(result.message);
+        setResultMessage(result.message || result.reason);
         setIsSubmitting(false);
         queryClient.invalidateQueries({ queryKey: ['history'] });
       }
       
-      // Note: If result is still 'LOADING' (rare), the useSocket hook will handle the 'attendance_result' event.
     } catch (err: any) {
       setIsSubmitting(false);
-      const msg = err.response?.data?.message || 'Submission failed';
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Submission failed';
       setResultStatus('INVALID');
       setResultMessage(msg);
     }
@@ -297,7 +333,7 @@ export default function AttendanceScreen() {
   };
 
   // ─── Renderers ──────────────────────────────────────────────────────────────
-  if (!sessionData) return null;
+  if (!sessionData || user?.role !== 'student') return null;
 
   return (
     <View className="flex-1 bg-dark px-6 py-12 items-center">
@@ -315,22 +351,15 @@ export default function AttendanceScreen() {
         </View>
       </View>
 
-      {/* Countdown Timer */}
+      {/* Countdown Timer (Synchronized & Immediate) */}
       <View className="mb-6">
-        {sessionState === 'IDLE' ? (
-          <View style={{ width: 140, height: 140 }} className="items-center justify-center border-4 border-primary/20 rounded-full">
-            <ActivityIndicator size="large" color="#6366F1" />
-            <Text className="text-primary font-bold text-[10px] mt-2 tracking-tighter">WAITING FOR GPS</Text>
-          </View>
-        ) : (
-          <CountdownTimer 
-            key={sessionData.sessionId} // Re-mount timer if session changes
-            duration={initialTimeLeft} 
-            onComplete={handleTimeComplete}
-            size={140}
-            strokeWidth={10}
-          />
-        )}
+        <CountdownTimer 
+          key={sessionData.sessionId} // Re-mount timer if session changes
+          duration={initialTimeLeft} 
+          onComplete={handleTimeComplete}
+          size={140}
+          strokeWidth={10}
+        />
       </View>
 
       {/* Verification Layer Status */}
@@ -362,19 +391,9 @@ export default function AttendanceScreen() {
           <AttendanceCodeSelector
             options={sessionData.options}
             selectedCode={selectedCode}
-            onSelect={handleSubmit}
-            disabled={sessionState !== 'ACTIVE' || isSubmitting || !location}
+            onSelect={(code) => handleSubmit(code)}
+            disabled={sessionState !== 'ACTIVE' || isSubmitting}
           />
-
-          {verification.locationVerified === null && sessionState === 'ACTIVE' && !locationError && (
-            <View className="absolute inset-0 bg-dark/60 items-center justify-center rounded-3xl border border-dark-border/50">
-              <ActivityIndicator size="large" color="#6366F1" />
-              <Text className="text-white font-bold mt-4">Waiting for GPS...</Text>
-              <Text className="text-dark-muted text-xs mt-2 px-8 text-center">
-                We need your high-accuracy location to verify attendance.
-              </Text>
-            </View>
-          )}
         </View>
         </ScrollView>
       </View>

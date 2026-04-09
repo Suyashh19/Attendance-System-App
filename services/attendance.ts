@@ -1,7 +1,21 @@
 import api, { API_ROUTES } from './api';
-import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult, SubjectHistory } from '../types';
+import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult, SubjectHistory, RecentSession, SessionDetailsResponse } from '../types';
 
-// ─── Subjects ────────────────────────────────────────────────────────────────
+// ... (rest of imports remains same)
+
+// ... (existing functions)
+
+export async function getRecentSessions(): Promise<RecentSession[]> {
+  const { data } = await api.get(API_ROUTES.SESSIONS.RECENT);
+  return data.sessions;
+}
+
+export async function getSessionDetails(sessionId: string | number): Promise<SessionDetailsResponse> {
+  const { data } = await api.get(API_ROUTES.ATTENDANCE.SESSION_DETAILS(sessionId));
+  return data;
+}
+
+// ─── Register Push Token with Backend ────────────────────────────────────────
 export async function getMySubjects(): Promise<Subject[]> {
   const { data } = await api.get(API_ROUTES.SUBJECTS.MY);
   return Array.isArray(data) ? data : (data.subjects ?? []);
@@ -23,6 +37,16 @@ export async function deleteSubject(subjectId: number): Promise<void> {
 
 export async function unenrollSubject(subjectId: number): Promise<void> {
   await api.delete(API_ROUTES.ENROLLMENTS.UNENROLL(subjectId));
+}
+
+export async function getSubjectEnrollments(subjectId: number) {
+  const { data } = await api.get(API_ROUTES.ENROLLMENTS.BY_SUBJECT(subjectId));
+  return data.students;
+}
+
+export async function updateEnrollmentStatus(subjectId: number, studentId: number, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+  const { data } = await api.put(API_ROUTES.ENROLLMENTS.UPDATE_STATUS(subjectId, studentId), { status });
+  return data;
 }
 
 // ─── Session Management (Faculty) ─────────────────────────────────────────────
@@ -71,6 +95,16 @@ export async function deleteSubjectHistory(subjectId: number): Promise<void> {
 // ─── Submit Attendance ────────────────────────────────────────────────────────
 export async function submitAttendance(payload: SubmitAttendancePayload): Promise<AttendanceResult> {
   const { data } = await api.post<AttendanceResult>(API_ROUTES.ATTENDANCE.SUBMIT, payload);
+  return data;
+}
+
+export async function getSubjectAnalytics(subjectId: number) {
+  const { data } = await api.get(API_ROUTES.ATTENDANCE.ANALYTICS(subjectId));
+  return data;
+}
+
+export async function editAttendanceRecord(sessionId: string | number, studentId: number, status: string, reason?: string) {
+  const { data } = await api.put(API_ROUTES.ATTENDANCE.EDIT(sessionId, studentId), { status, reason });
   return data;
 }
 

@@ -18,12 +18,14 @@ export const API_ROUTES = {
     ENROLL: '/enrollments/enroll',
     BY_SUBJECT: (id: number) => `/enrollments/${id}`,
     UNENROLL: (id: number) => `/enrollments/${id}/unenroll`,
+    UPDATE_STATUS: (subjectId: number, studentId: number) => `/enrollments/subject/${subjectId}/student/${studentId}/status`,
   },
   SESSIONS: {
     START: '/sessions/start',
     END: (id: string | number) => `/sessions/${id}/end`,
     HISTORY: (subjectId: number) => `/sessions/${subjectId}/history`,
     ACTIVE: (subjectId: number) => `/sessions/${subjectId}/active`,
+    RECENT: '/sessions/recent',
   },
   ATTENDANCE: {
     BASE: '/attendance',
@@ -31,6 +33,8 @@ export const API_ROUTES = {
     HISTORY: '/attendance/history',
     ANALYTICS: (subjectId: number) => `/attendance/subject/${subjectId}/analytics`,
     MY_RECORD: (subjectId: number) => `/attendance/subject/${subjectId}/my-record`,
+    EDIT: (sessionId: string | number, studentId: number) => `/attendance/session/${sessionId}/student/${studentId}`,
+    SESSION_DETAILS: (sessionId: string | number) => `/attendance/session/${sessionId}`,
   }
 };
 

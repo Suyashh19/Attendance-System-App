@@ -9,10 +9,11 @@ interface SubjectCardProps {
   sessionActive?: boolean;
   onStartSession?: () => void;
   onDelete?: () => void;
+  onManagePending?: () => void;
   onUnenroll?: () => void;
 }
 
-export function SubjectCard({ subject, sessionActive = false, onStartSession, onDelete, onUnenroll }: SubjectCardProps) {
+export function SubjectCard({ subject, sessionActive = false, onStartSession, onDelete, onManagePending, onUnenroll }: SubjectCardProps) {
   const user = useAuthStore((s) => s.user);
   const isFaculty = user?.role === 'faculty';
 
@@ -23,7 +24,7 @@ export function SubjectCard({ subject, sessionActive = false, onStartSession, on
           {subject.code.substring(0, 2).toUpperCase()}
         </Text>
       </View>
-      
+
       <View className="flex-1">
         <Text className="text-white font-bold text-lg mb-1">{subject.name}</Text>
         <Text className="text-dark-muted text-sm font-medium">{subject.code}</Text>
@@ -37,13 +38,19 @@ export function SubjectCard({ subject, sessionActive = false, onStartSession, on
               <Text className="text-success text-xs font-bold">LIVE</Text>
             </View>
           ) : isFaculty ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={onStartSession}
               className="bg-primary px-3 py-2 rounded-xl flex-row items-center"
             >
               <Ionicons name="play" size={14} color="white" className="mr-1" />
               <Text className="text-white text-xs font-bold">START</Text>
             </TouchableOpacity>
+          ) : !isFaculty && subject.enrollmentStatus && subject.enrollmentStatus !== 'APPROVED' ? (
+            <View className={`px-3 py-1 rounded-full ${subject.enrollmentStatus === 'PENDING' ? 'bg-warning/20' : 'bg-danger/20'}`}>
+              <Text className={`text-xs font-bold ${subject.enrollmentStatus === 'PENDING' ? 'text-warning' : 'text-danger'}`}>
+                {subject.enrollmentStatus}
+              </Text>
+            </View>
           ) : (
             <View className="bg-dark-border px-3 py-1 rounded-full">
               <Text className="text-dark-muted text-xs font-bold">OFFLINE</Text>
@@ -52,14 +59,22 @@ export function SubjectCard({ subject, sessionActive = false, onStartSession, on
         </View>
 
         {isFaculty ? (
-          <TouchableOpacity 
-            onPress={onDelete}
-            className="bg-danger/10 p-2 rounded-xl border border-danger/20"
-          >
-            <Ionicons name="trash-outline" size={18} color="#EF4444" />
-          </TouchableOpacity>
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              onPress={onManagePending}
+              className="bg-warning/10 p-2 rounded-xl border border-warning/20 mr-2"
+            >
+              <Ionicons name="people-outline" size={18} color="#F59E0B" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onDelete}
+              className="bg-danger/10 p-2 rounded-xl border border-danger/20"
+            >
+              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
         ) : (
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={onUnenroll}
             className="bg-danger/10 p-2 rounded-xl border border-danger/20"
           >

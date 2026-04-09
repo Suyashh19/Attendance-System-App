@@ -1,26 +1,37 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAttendanceHistory, getMySubjects, deleteSubjectHistory } from '../../services/attendance';
+import { getAttendanceHistory, getMySubjects, deleteSubjectHistory, getRecentSessions } from '../../services/attendance';
 import { exportAttendanceData } from '../../services/analytics';
 import { HistorySubjectCard } from '../../components/HistorySubjectCard';
 import { ExportFilterModal } from '../../components/ExportFilterModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
-import type { SubjectHistory, Subject } from '../../types';
+import type { SubjectHistory, Subject, RecentSession } from '../../types';
+import { useRouter } from 'expo-router';
 
 export default function HistoryScreen() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isStudent = user?.role === 'student';
   const isFaculty = user?.role === 'faculty';
 
-  const { data: history = [], isLoading, isError, refetch } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError, refetch: refetchHistory } = useQuery({
     queryKey: ['history'],
     queryFn: getAttendanceHistory,
     enabled: isStudent,
   });
   
+  const { data: recentSessions = [], isLoading: recentLoading, refetch: refetchRecent } = useQuery({
+    queryKey: ['recent-sessions'],
+    queryFn: getRecentSessions,
+    enabled: isFaculty,
+  });
+
+  const isLoading = isStudent ? historyLoading : recentLoading;
+  const refetch = isStudent ? refetchHistory : refetchRecent;
+
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
@@ -82,7 +93,7 @@ export default function HistoryScreen() {
     };
   }, [history]);
 
-  if (isLoading && isStudent) {
+  if (isLoading && (isStudent || (isFaculty && !subjects.length))) {
     return (
       <View className="flex-1 bg-dark items-center justify-center">
         <ActivityIndicator size="large" color="#6366F1" />
@@ -110,28 +121,82 @@ export default function HistoryScreen() {
       </View>
 
       {isFaculty && !selectedCategory && (
-        <View className="flex-row gap-4 mt-2">
-          <TouchableOpacity 
-            onPress={() => setSelectedCategory('theory')}
-            className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-md"
-          >
-            <View className="bg-primary/20 p-4 rounded-2xl mb-4">
-              <Ionicons name="book-outline" size={32} color="#6366F1" />
-            </View>
-            <Text className="text-white font-bold text-lg">Theory</Text>
-            <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'theory').length} Subjects</Text>
-          </TouchableOpacity>
+        <View>
+          <View className="flex-row gap-4 mt-2 mb-8">
+            <TouchableOpacity 
+              onPress={() => setSelectedCategory('theory')}
+              className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-md"
+            >
+              <View className="bg-primary/20 p-4 rounded-2xl mb-4">
+                <Ionicons name="book-outline" size={32} color="#6366F1" />
+              </View>
+              <Text className="text-white font-bold text-lg">Theory</Text>
+              <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'theory').length} Subjects</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            onPress={() => setSelectedCategory('practical')}
-            className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-md"
-          >
-            <View className="bg-success/20 p-4 rounded-2xl mb-4">
-              <Ionicons name="flask-outline" size={32} color="#10B981" />
+            <TouchableOpacity 
+              onPress={() => setSelectedCategory('practical')}
+              className="flex-1 bg-dark-card border border-dark-border p-8 rounded-3xl items-center shadow-md"
+            >
+              <View className="bg-success/20 p-4 rounded-2xl mb-4">
+                <Ionicons name="flask-outline" size={32} color="#10B981" />
+              </View>
+              <Text className="text-white font-bold text-lg">Practical</Text>
+              <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'practical').length} Subjects</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-white font-bold text-xl">Recent Classes</Text>
+            {recentSessions.length > 0 && (
+              <Ionicons name="time-outline" size={20} color="#64748B" />
+            )}
+          </View>
+
+          {recentSessions.length === 0 ? (
+            <View className="bg-dark-card border border-dark-border p-8 rounded-3xl items-center mb-6">
+              <Ionicons name="calendar-outline" size={48} color="#334155" className="mb-3" />
+              <Text className="text-dark-muted text-base font-medium">No recent classes found</Text>
             </View>
-            <Text className="text-white font-bold text-lg">Practical</Text>
-            <Text className="text-dark-muted text-xs mt-1">{subjects.filter(s => s.type === 'practical').length} Subjects</Text>
-          </TouchableOpacity>
+          ) : (
+            <View className="mb-6">
+              {recentSessions.map((session) => (
+                <TouchableOpacity 
+                  key={session.id}
+                  onPress={() => router.push(`/lecture-detail?id=${session.id}` as any)}
+                  className="bg-dark-card border border-dark-border p-5 rounded-3xl mb-4 shadow-sm"
+                >
+                  <View className="flex-row justify-between items-start">
+                    <View className="flex-1">
+                      <View className="flex-row items-center mb-2">
+                        <View className={`px-2 py-0.5 rounded-md mr-2 ${session.subjectType === 'theory' ? 'bg-primary/20' : 'bg-success/20'}`}>
+                          <Text className={`text-[10px] font-black uppercase ${session.subjectType === 'theory' ? 'text-primary' : 'text-success'}`}>
+                            {session.subjectType}
+                          </Text>
+                        </View>
+                        <Text className="text-dark-muted text-xs font-bold">
+                          {new Date(session.startTime).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </Text>
+                      </View>
+                      <Text className="text-white font-black text-lg mb-1" numberOfLines={1}>{session.subjectName}</Text>
+                      <Text className="text-dark-muted text-xs font-medium uppercase tracking-widest">{session.subjectCode}</Text>
+                    </View>
+
+                    <View className="items-end">
+                      <View className="bg-dark p-2 px-3 rounded-2xl border border-dark-border">
+                        <Text className="text-white font-black text-sm">
+                          {session.presentCount}
+                          <Text className="text-dark-muted text-[10px]"> / {session.totalEnrolled}</Text>
+                        </Text>
+                        <Text className="text-[9px] text-success font-bold text-center mt-0.5">PRESENT</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#475569" className="mt-2" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
 

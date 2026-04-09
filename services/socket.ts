@@ -8,20 +8,27 @@ import type {
 const SOCKET_URL = 'https://attendance-system-backend-uqgy.onrender.com';
 
 let socket: Socket | null = null;
+const joinedRooms = new Set<string>();
 
 export function initSocket(token: string): Socket {
   if (socket?.connected) return socket;
 
   socket = io(SOCKET_URL, {
     auth: { token },
-    transports: ['websocket'],
-    reconnectionAttempts: 5,
+    transports: ['websocket', 'polling'], // Added polling as fallback
+    reconnection: true,
+    reconnectionAttempts: 20, // Increased from 5 to 20
     reconnectionDelay: 2000,
     timeout: 60000,
   });
 
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id);
+    // Automatically re-join all rooms upon reconnection
+    joinedRooms.forEach((subjectId) => {
+      console.log(`[Socket] Re-joining room: subject_${subjectId}`);
+      socket?.emit('join_subject', { subjectId });
+    });
   });
 
   socket.on('disconnect', (reason) => {
@@ -43,16 +50,25 @@ export function disconnectSocket(): void {
   if (socket) {
     socket.disconnect();
     socket = null;
+    joinedRooms.clear();
   }
 }
 
 // ─── Room management ─────────────────────────────────────────────────────────
 export function joinSubjectRoom(subjectId: string): void {
-  socket?.emit('join_subject', { subjectId });
+  if (!subjectId) return;
+  joinedRooms.add(subjectId);
+  if (socket?.connected) {
+    socket.emit('join_subject', { subjectId });
+  }
 }
 
 export function leaveSubjectRoom(subjectId: string): void {
-  socket?.emit('leave_subject', { subjectId });
+  if (!subjectId) return;
+  joinedRooms.delete(subjectId);
+  if (socket?.connected) {
+    socket.emit('leave_subject', { subjectId });
+  }
 }
 
 // ─── Event Listeners ─────────────────────────────────────────────────────────

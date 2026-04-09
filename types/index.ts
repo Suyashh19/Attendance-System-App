@@ -48,6 +48,7 @@ export interface Subject {
   _count?: {
     enrollments: number;
   };
+  enrollmentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -160,4 +161,38 @@ export interface SubjectHistory {
     INVALID: number;
     total: number;
   };
+}
+
+// ─── Faculty Reports ──────────────────────────────────────────────────────────
+export interface RecentSession {
+  id: number;
+  subjectId: number;
+  subjectName: string;
+  subjectCode: string;
+  subjectType: 'theory' | 'practical';
+  startTime: string;
+  endTime: string | null;
+  presentCount: number;
+  totalEnrolled: number;
+}
+
+export interface SessionStudentAttendance {
+  id: number;
+  name: string;
+  prn: string | null;
+  rollNo: string | null;
+  status: 'PRESENT' | 'ABSENT';
+  reason: string | null;
+  editedByFaculty: boolean;
+}
+
+export interface SessionDetailsResponse {
+  session: {
+    id: number;
+    date: string;
+    subjectName: string;
+    subjectCode: string;
+    subjectType: 'theory' | 'practical';
+  };
+  students: SessionStudentAttendance[];
 }

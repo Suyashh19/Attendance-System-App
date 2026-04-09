@@ -15,6 +15,8 @@ import { EnrollModal } from '../../components/EnrollModal';
 import { SubjectCard } from '../../components/SubjectCard';
 import { FacultySessionModal } from '../../components/FacultySessionModal';
 import { SchedulingModal } from '../../components/SchedulingModal';
+import { PendingApprovalsModal } from '../../components/PendingApprovalsModal';
+import { AttendanceSummaryModal } from '../../components/AttendanceSummaryModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
 import { registerForPushNotifications } from '../../services/notification';
@@ -42,6 +44,9 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [locationStatus, setLocationStatus] = useState<string | null>(null);
+  
+  const [pendingSubjectId, setPendingSubjectId] = useState<number | null>(null);
+  const [summaryData, setSummaryData] = useState<{ sessionId: number, attendances: any[] } | null>(null);
 
   // ─── Fetch Subjects ──────────────────────────────────────────────────────────
   const { data: subjects = [], isLoading, isError, refetch } = useQuery({
@@ -158,9 +163,12 @@ export default function HomeScreen() {
     if (!facultyActiveSession) return;
     try {
       setIsActionLoading(true);
-      await endSession(facultyActiveSession.id);
+      const res = await endSession(facultyActiveSession.id);
       setFacultyActiveSession(null);
       setActiveSessionId(null);
+      if (res.attendances) {
+        setSummaryData({ sessionId: facultyActiveSession.id, attendances: res.attendances });
+      }
     } catch (err) {
       setFacultyActiveSession(null);
       setActiveSessionId(null);
@@ -361,6 +369,7 @@ export default function HomeScreen() {
             sessionActive={activeSessionId === String(item.id)} 
             onStartSession={() => handleStartSessionPress(item)}
             onDelete={() => handleDeleteSubject(item)}
+            onManagePending={() => setPendingSubjectId(item.id)}
             onUnenroll={() => handleUnenrollSubject(item)}
           />
         )}
@@ -392,6 +401,19 @@ export default function HomeScreen() {
         onClose={() => setSchedulingSubject(null)}
         onConfirm={handleConfirmSchedule}
         loading={isActionLoading}
+      />
+
+      <PendingApprovalsModal
+        visible={!!pendingSubjectId}
+        subjectId={pendingSubjectId}
+        onClose={() => setPendingSubjectId(null)}
+      />
+
+      <AttendanceSummaryModal
+        visible={!!summaryData}
+        sessionId={summaryData?.sessionId || null}
+        attendances={summaryData?.attendances || []}
+        onClose={() => setSummaryData(null)}
       />
       
       {/* Global Activity Indicator for actions with Status */}

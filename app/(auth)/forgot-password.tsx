@@ -1,0 +1,173 @@
+import React, { useState } from 'react';
+import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { Link, useRouter } from 'expo-router';
+import { Input } from '../../components/Input';
+import { Button } from '../../components/Button';
+import { forgotPassword, resetPassword } from '../../services/auth';
+
+const step1Schema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+});
+
+const step2Schema = step1Schema.extend({
+  otp: z.string().min(6, 'OTP must be 6 digits').max(6),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+type FormData = z.infer<typeof step2Schema>;
+
+export default function ForgotPasswordScreen() {
+  const [step, setStep] = useState<'email' | 'reset'>('email');
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const {
+    control,
+    handleSubmit,
+    getValues,
+    formState: { errors },
+  } = useForm<FormData>({
+    resolver: zodResolver(step === 'email' ? step1Schema : step2Schema),
+    defaultValues: { email: '', otp: '', newPassword: '' },
+  });
+
+  const onSendOtp = async (data: any) => {
+    try {
+      setLoading(true);
+      const res = await forgotPassword(data.email);
+      Alert.alert('OTP Sent', res.message || 'Check your email for the OTP.');
+      setStep('reset');
+    } catch (err: any) {
+      const msg = err.response?.data?.error || 'Failed to send OTP.';
+      Alert.alert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onResetPassword = async (data: FormData) => {
+    try {
+      setLoading(true);
+      await resetPassword({
+        email: data.email,
+        otp: data.otp,
+        newPassword: data.newPassword,
+      });
+      Alert.alert('Success', 'Password has been reset successfully.', [
+        { text: 'Login', onPress: () => router.replace('/(auth)/login') },
+      ]);
+    } catch (err: any) {
+      const msg = err.response?.data?.error || 'Failed to reset password.';
+      Alert.alert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView 
+      className="flex-1 bg-light"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+        <View className="flex-1 justify-center px-6 py-12">
+          
+          <View className="mb-8">
+            <Text className="text-3xl font-bold text-light-text mb-2">
+              Reset Password
+            </Text>
+            <Text className="text-light-muted text-base">
+              {step === 'email' 
+                ? "Enter your email to receive an OTP." 
+                : "Enter the OTP sent to your email and your new password."}
+            </Text>
+          </View>
+
+          <View className="bg-light-card shadow-sm p-6 rounded-3xl border border-light-border shadow-md">
+            
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  label="Email Address"
+                  placeholder="name@university.edu"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  icon="mail-outline"
+                  onBlur={onBlur}
+                  onChangeText={onChange}
+                  value={value}
+                  error={errors.email?.message}
+                  editable={step === 'email'}
+                />
+              )}
+            />
+
+            {step === 'email' ? (
+              <Button
+                title="Send Request"
+                onPress={handleSubmit(onSendOtp)}
+                loading={loading}
+                className="mt-4"
+              />
+            ) : (
+              <>
+                <Controller
+                  control={control}
+                  name="otp"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Input
+                      label="Enter OTP"
+                      placeholder="6-digit code"
+                      keyboardType="numeric"
+                      icon="keypad-outline"
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      value={value}
+                      error={errors.otp?.message}
+                    />
+                  )}
+                />
+                
+                <Controller
+                  control={control}
+                  name="newPassword"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Input
+                      label="New Password"
+                      placeholder="Min 6 characters"
+                      secureTextEntry
+                      icon="lock-closed-outline"
+                      onBlur={onBlur}
+                      onChangeText={onChange}
+                      value={value}
+                      error={errors.newPassword?.message}
+                    />
+                  )}
+                />
+
+                <Button
+                  title="Reset Password"
+                  onPress={handleSubmit(onResetPassword)}
+                  loading={loading}
+                  className="mt-4"
+                />
+              </>
+            )}
+          </View>
+
+          <View className="flex-row justify-center mt-8">
+            <Link href="/(auth)/login" asChild>
+              <Text className="text-primary font-bold">Back to Login</Text>
+            </Link>
+          </View>
+
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}

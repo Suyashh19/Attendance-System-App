@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -119,6 +119,14 @@ export default function LoginScreen() {
  loading={loading}
  className="mt-6"
  />
+
+ <View className="mt-4 items-center">
+   <Link href="/(auth)/forgot-password" asChild>
+     <TouchableOpacity p-2>
+       <Text className="text-primary font-medium">Forgot Password?</Text>
+     </TouchableOpacity>
+   </Link>
+ </View>
  </View>
 
  <View className="flex-row justify-center mt-8">

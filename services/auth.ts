@@ -15,6 +15,33 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
   return data;
 }
 
+// ─── OTP & Password Management ────────────────────────────────────────────────
+
+export async function sendSignupOtp(email: string) {
+  const { data } = await api.post('/auth/send-signup-otp', { email });
+  return data;
+}
+
+export async function verifySignupOtp(email: string, otp: string) {
+  const { data } = await api.post('/auth/verify-signup-otp', { email, otp });
+  return data;
+}
+
+export async function forgotPassword(email: string) {
+  const { data } = await api.post('/auth/forgot-password', { email });
+  return data;
+}
+
+export async function resetPassword(payload: { email: string; otp: string; newPassword: string }) {
+  const { data } = await api.post('/auth/reset-password', payload);
+  return data;
+}
+
+export async function updateUserPassword(payload: { currentPassword: string; newPassword: string }) {
+  const { data } = await api.post('/auth/update-password', payload);
+  return data;
+}
+
 // ─── SecureStore Token Helpers ────────────────────────────────────────────────
 export async function storeToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(TOKEN_KEY, token);

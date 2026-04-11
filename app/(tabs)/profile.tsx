@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Alert, TextInput, TouchableOpacity, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeviceId } from '../../hooks/useDeviceId';
-import { updatePrn, deleteAccount } from '../../services/auth';
+import { updatePrn, deleteAccount, updateUserPassword } from '../../services/auth';
 
 export default function ProfileScreen() {
  const { user, logout, setUser } = useAuthStore();
@@ -15,6 +15,13 @@ export default function ProfileScreen() {
  
  const [prnInput, setPrnInput] = useState('');
  const [isUpdating, setIsUpdating] = useState(false);
+
+ // Password Modal State
+ const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
+ const [currentPassword, setCurrentPassword] = useState('');
+ const [newPassword, setNewPassword] = useState('');
+ const [confirmPassword, setConfirmPassword] = useState('');
+ const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
  const handleLogout = () => {
  Alert.alert(
@@ -63,6 +70,36 @@ export default function ProfileScreen() {
  }
  ]
  );
+ };
+
+ const handleUpdatePassword = async () => {
+   if (!currentPassword || !newPassword || !confirmPassword) {
+     Alert.alert('Error', 'All fields are required.');
+     return;
+   }
+   if (newPassword.length < 6) {
+     Alert.alert('Error', 'New password must be at least 6 characters.');
+     return;
+   }
+   if (newPassword !== confirmPassword) {
+     Alert.alert('Error', 'New passwords do not match.');
+     return;
+   }
+
+   try {
+     setIsUpdatingPassword(true);
+     const res = await updateUserPassword({ currentPassword, newPassword });
+     Alert.alert('Success', res.message || 'Password updated successfully.');
+     setPasswordModalVisible(false);
+     setCurrentPassword('');
+     setNewPassword('');
+     setConfirmPassword('');
+   } catch (err: any) {
+     const msg = err.response?.data?.error || 'Failed to update password.';
+     Alert.alert('Error', msg);
+   } finally {
+     setIsUpdatingPassword(false);
+   }
  };
 
  return (
@@ -161,6 +198,15 @@ export default function ProfileScreen() {
  </View>
 
  <Button
+ title="Update Password"
+ variant="outline"
+ icon="lock-closed-outline"
+ onPress={() => setPasswordModalVisible(true)}
+ className="mt-6 border-primary/20 bg-primary/5"
+ textStyle="text-primary"
+ />
+
+ <Button
  title="Sign Out"
  variant="outline"
  icon="log-out-outline"
@@ -212,6 +258,58 @@ export default function ProfileScreen() {
  <Text className="text-center text-light-muted text-xs mt-8">
  Attendance System v1.0.0
  </Text>
+
+ {/* Update Password Modal */}
+ <Modal
+   visible={isPasswordModalVisible}
+   transparent
+   animationType="slide"
+   onRequestClose={() => setPasswordModalVisible(false)}
+ >
+   <KeyboardAvoidingView 
+     behavior={Platform.OS === "ios" ? "padding" : undefined}
+     className="flex-1 justify-end bg-black/60"
+   >
+     <View className="bg-light p-6 rounded-t-3xl min-h-[400px]">
+       <View className="flex-row justify-between items-center mb-6">
+         <Text className="text-xl font-bold text-light-text">Update Password</Text>
+         <TouchableOpacity onPress={() => setPasswordModalVisible(false)}>
+           <Ionicons name="close" size={24} color="#1A1D1F" />
+         </TouchableOpacity>
+       </View>
+       
+       <Input
+         label="Current Password"
+         secureTextEntry
+         icon="lock-closed-outline"
+         value={currentPassword}
+         onChangeText={setCurrentPassword}
+       />
+       <Input
+         label="New Password"
+         secureTextEntry
+         icon="key-outline"
+         value={newPassword}
+         onChangeText={setNewPassword}
+       />
+       <Input
+         label="Confirm New Password"
+         secureTextEntry
+         icon="shield-checkmark-outline"
+         value={confirmPassword}
+         onChangeText={setConfirmPassword}
+         error={confirmPassword && newPassword !== confirmPassword ? "Passwords do not match" : undefined}
+       />
+
+       <Button
+         title="Save Password"
+         onPress={handleUpdatePassword}
+         loading={isUpdatingPassword}
+         className="mt-6 mb-8"
+       />
+     </View>
+   </KeyboardAvoidingView>
+ </Modal>
 
  </ScrollView>
  );

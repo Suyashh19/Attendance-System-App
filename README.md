@@ -1,6 +1,6 @@
 # 🚀 Real-Time Intelligent Attendance System (Mobile App)
 
-A production-ready **React Native (Expo)** application designed to prevent proxy attendance using a highly secure, multi-layer verification pipeline. It integrates seamlessly with the Node.js/Socket.IO backend to provide a 15-second real-time attendance window.
+A production-ready **React Native (Expo)** application designed to prevent proxy attendance using a highly secure, multi-layer verification pipeline. It integrates seamlessly with the Node.js/Socket.IO backend to provide real-time attendance tracking with a verified light-theme UX.
 
 ---
 
@@ -9,9 +9,10 @@ A production-ready **React Native (Expo)** application designed to prevent proxy
 This app is the student-facing terminal for the attendance system. The flow is as follows:
 
 1.  **Hardware-Anchored Binding**: On first login, the app uses `expo-application` to extract the unchangeable, physical hardware ID of the phone (`ANDROID_ID` or Apple `IDFV`). This immutable ID binds the user to their physical device, mathematically preventing proxying via account sharing.
-2.  **Enrollment & Approval**: Students request to join a subject using a unique 6-digit code. Faculty members must manually approve these requests in the "Pending Approvals" dashboard before the student is officially part of the roster.
-3.  **Real-Time Connection**: The app connects to the backend via `Socket.IO` using JWT authentication. It listens for the `session_started` event on the student's enrolled subjects.
-4.  **The 15-Second Window**: When a faculty member starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
+2.  **OTP-Verified Registration**: All new registrations and password resets are secured via 6-digit OTPs delivered via **Resend**, ensuring email ownership.
+3.  **Enrollment & Approval**: Students request to join a subject using a unique 6-digit code. Faculty members must manually approve these requests in the "Pending Approvals" dashboard before the student is officially part of the roster.
+4.  **Real-Time Connection**: The app connects to the backend via `Socket.IO` using JWT authentication. It listens for the `session_started` event on the student's enrolled subjects.
+5.  **The 15-Second Window**: When a faculty member starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
 5.  **Multi-Layer Validation**: 
     -   **GPS Lock**: Silent, high-accuracy `expo-location` GPS negotiation (background).
     -   **Visual Code**: The student must select the correct 3-digit code from 4 shuffled options *(looking at the professor's board)*.
@@ -33,8 +34,10 @@ This app is the student-facing terminal for the attendance system. The flow is a
 
 ### Student Capabilities
 -   **Enrollment Tracking**: Join classes and monitor your approval status.
+-   **Verified Onboarding**: OTP-based registration and secure **Self-Service Password Reset (SSPR)**.
 -   **High-Security Verification**: Lock your account strictly to your physical device.
 -   **Attendance Analytics**: Beautifully visualized history with "Overall Percentage" and "Subject-Specific" stats.
+-   **Modern Light Theme**: System-wide high-fidelity light mode for maximum readability.
 -   **Push Notifications**: Receive instant alerts when a professor starts taking attendance.
 
 ---
@@ -48,6 +51,7 @@ This app is the student-facing terminal for the attendance system. The flow is a
 -   **State Management**: Zustand (Auth & Device State)
 -   **Data Fetching**: Axios & TanStack React Query
 -   **Real-Time**: Socket.IO-Client
+-   **Email Engine**: Resend (Serverless Email Platform)
 -   **Native APIs**: 
     -   `expo-location` (Hybrid GPS Tracking)
     -   `expo-secure-store` (Encrypted JWT persistence)

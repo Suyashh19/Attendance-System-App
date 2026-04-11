@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#F7F9FC"
     },
     "ios": {
       "supportsTablet": false,
@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#F7F9FC"
       },
       "package": "com.attendancesystem.app",
       "permissions": [

@@ -1,4 +1,4 @@
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
@@ -14,76 +14,76 @@ const queryClient = new QueryClient();
 SplashScreen.preventAutoHideAsync().catch(() => null);
 
 function AuthRedirectHandler() {
-  const { isAuthenticated, isHydrated } = useAuthStore();
-  const segments = useSegments();
-  const router = useRouter();
-  const navigationState = useRootNavigationState();
+ const { isAuthenticated, isHydrated } = useAuthStore();
+ const segments = useSegments();
+ const router = useRouter();
+ const navigationState = useRootNavigationState();
 
-  useEffect(() => {
-    // Wait until navigation is mounted and auth state is hydrated
-    if (!navigationState?.key || !isHydrated) return;
+ useEffect(() => {
+ // Wait until navigation is mounted and auth state is hydrated
+ if (!navigationState?.key || !isHydrated) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
+ const inAuthGroup = segments[0] === '(auth)';
 
-    if (!isAuthenticated && !inAuthGroup) {
-      if (segments[segments.length - 1] !== 'login') {
-        const timer = setTimeout(() => {
-           router.replace('/(auth)/login');
-        }, 1);
-        return () => clearTimeout(timer);
-      }
-    } else if (isAuthenticated && inAuthGroup) {
-      const timer = setTimeout(() => {
-         router.replace('/(tabs)/home');
-      }, 1);
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthenticated, segments, navigationState?.key, isHydrated]);
+ if (!isAuthenticated && !inAuthGroup) {
+ if (segments[segments.length - 1] !== 'login') {
+ const timer = setTimeout(() => {
+ router.replace('/(auth)/login');
+ }, 1);
+ return () => clearTimeout(timer);
+ }
+ } else if (isAuthenticated && inAuthGroup) {
+ const timer = setTimeout(() => {
+ router.replace('/(tabs)/home');
+ }, 1);
+ return () => clearTimeout(timer);
+ }
+ }, [isAuthenticated, segments, navigationState?.key, isHydrated]);
 
-  return null;
+ return null;
 }
 
 function RootLayoutNav() {
-  return (
-    <ThemeProvider value={DarkTheme}>
-      <AuthRedirectHandler />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-      </Stack>
-    </ThemeProvider>
-  );
+ return (
+ <ThemeProvider value={DefaultTheme}>
+ <AuthRedirectHandler />
+ <Stack screenOptions={{ headerShown: false }}>
+ <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+ <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+ <Stack.Screen name="index" options={{ headerShown: false }} />
+ </Stack>
+ </ThemeProvider>
+ );
 }
 
 export default function RootLayout() {
-  const [isReady, setIsReady] = useState(false);
-  const { hydrate } = useAuthStore();
+ const [isReady, setIsReady] = useState(false);
+ const { hydrate } = useAuthStore();
 
-  useEffect(() => {
-    async function init() {
-      try {
-        await hydrate();
-      } catch (err) {
-        console.warn('[RootLayout] Hydration error:', err);
-      } finally {
-        setIsReady(true);
-        // Hide splash screen only after hydration
-        SplashScreen.hideAsync().catch(() => null);
-      }
-    }
-    init();
-  }, [hydrate]);
+ useEffect(() => {
+ async function init() {
+ try {
+ await hydrate();
+ } catch (err) {
+ console.warn('[RootLayout] Hydration error:', err);
+ } finally {
+ setIsReady(true);
+ // Hide splash screen only after hydration
+ SplashScreen.hideAsync().catch(() => null);
+ }
+ }
+ init();
+ }, [hydrate]);
 
-  if (!isReady) {
-    return null;
-  }
+ if (!isReady) {
+ return null;
+ }
 
-  return (
-    <View className="flex-1">
-      <QueryClientProvider client={queryClient}>
-        <RootLayoutNav />
-      </QueryClientProvider>
-    </View>
-  );
+ return (
+ <View className="flex-1">
+ <QueryClientProvider client={queryClient}>
+ <RootLayoutNav />
+ </QueryClientProvider>
+ </View>
+ );
 }

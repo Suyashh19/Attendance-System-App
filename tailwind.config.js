@@ -9,16 +9,18 @@ module.exports = {
     extend: {
       colors: {
         primary: '#6366F1',
-        secondary: '#8B5CF6',
-        accent: '#06B6D4',
-        success: '#10B981',
-        warning: '#F59E0B',
-        danger: '#EF4444',
-        dark: {
-          DEFAULT: '#0F172A',
-          card: '#1E293B',
-          border: '#334155',
-          muted: '#64748B',
+        secondary: '#6B7280',
+        accent: '#6366F1',
+        success: '#059669',
+        warning: '#6B7280',
+        danger: '#1A1D1F',
+        light: {
+          DEFAULT: '#F7F9FC',
+          card: '#FFFFFF',
+          border: '#E5EAF2',
+          muted: '#6B7280',
+          text: '#1A1D1F',
+          primaryBg: '#EEF2FF',
         },
       },
       fontFamily: {

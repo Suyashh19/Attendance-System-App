@@ -102,10 +102,10 @@ export interface AttendanceRecord {
 
 // ─── Verification State ───────────────────────────────────────────────────────
 export interface VerificationState {
-  sessionActive: boolean | null;
-  deviceMatched: boolean | null;
-  locationVerified: boolean | null;
-  timeValid: boolean | null;
+  sessionActive: boolean | null | 'ready';
+  deviceMatched: boolean | null | 'ready';
+  locationVerified: boolean | null | 'ready';
+  timeValid: boolean | null | 'ready';
 }
 
 // ─── Socket Events ────────────────────────────────────────────────────────────

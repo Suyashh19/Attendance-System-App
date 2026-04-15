@@ -83,18 +83,13 @@ export default function AttendanceScreen() {
  console.log('[DEBUG] AttendanceScreen received sessionData:', parsed);
  
  // --- 1. Reset ALL States for New Session ---
- setSessionData(null); 
+ setSessionData(null); setSessionState('IDLE'); 
  setSelectedCode(null);
  setIsSubmitting(false);
  setResultStatus(null);
  setResultMessage(undefined);
  setSessionState('IDLE');
- setVerification({
- sessionActive: true,
- deviceMatched: true,
- locationVerified: null, // Reset to waiting
- timeValid: true,
- });
+  setVerification({ sessionActive: true, deviceMatched: true, locationVerified: null, timeValid: true, }); // Initial state reset
 
  // --- 2. Initialize New Data ---
  let offset = 0;
@@ -112,7 +107,13 @@ export default function AttendanceScreen() {
  setInitialTimeLeft(Math.ceil(remaining));
  }
 
- setSessionData(parsed);
+  parsed.sessionId = parsed.sessionId || String(parsed.id);
+  if (!parsed.windowExpiry && parsed.startTime) {
+    const start = new Date(parsed.startTime).getTime();
+    parsed.windowExpiry = new Date(start + (parsed.windowSeconds || 15) * 1000).toISOString();
+  }
+  setSessionData(parsed);
+  setSessionState('ACTIVE');
 
  // Immediate device check
  if (deviceId && user) {
@@ -164,37 +165,47 @@ export default function AttendanceScreen() {
  },
  });
 
- // ─── 2.5 Fetch Location Immediately ──────────────────────────────────────────
- // ─── 2.5 High-Accuracy GPS Loop ──────────────────────────────────────────
- useEffect(() => {
- if (!sessionData || sessionState !== 'IDLE' || resultStatus) return;
+     // ─── 2.5 Fetch Location & Auto-Retry Loop ───────────────────────────────────
+  const locationSignalRef = useRef<'waiting' | 'ready' | 'failed'>('waiting');
 
- let isMounted = true;
+  useEffect(() => {
+   if (!sessionData || resultStatus) return;
 
- const resolveInitialLocation = async () => {
- if (!isMounted) return;
- 
- console.log('[DEBUG] Resolving hybrid GPS for student...');
- const loc = await getHybridPosition();
+   locationSignalRef.current = 'waiting';
+   let isMounted = true;
 
- if (isMounted) {
- // Validation: Accuracy <= 50m
- const isValid = loc && loc.accuracy && loc.accuracy <= 50;
- 
- setVerification((prev) => ({
- ...prev,
- locationVerified: isValid ? true : null, // null means we'll retry later if needed
- }));
+   const resolveLocation = async () => {
+   if (!isMounted) return;
+   
 
- // ALWAYS transition to ACTIVE after hybrid check (capped at 3s)
- setSessionState('ACTIVE');
- }
- };
+   // Use ref (not state) to avoid re-render loop in deps array
+   if (locationSignalRef.current === 'ready') return;
 
- resolveInitialLocation();
+   console.log('[DEBUG] Scanning for GPS signal...');
+   const loc = await getHybridPosition();
 
- return () => { isMounted = false; };
- }, [sessionData, sessionState, resultStatus, getHybridPosition]);
+   if (!isMounted) return;
+   const isAccuracyPoor = loc && loc.accuracy && loc.accuracy > 100;
+
+   if (loc && !isAccuracyPoor) {
+   locationSignalRef.current = 'ready';
+   setVerification((prev) => ({ ...prev, locationVerified: 'ready' }));
+   } else if (loc && isAccuracyPoor) {
+   locationSignalRef.current = 'failed';
+   setVerification((prev) => ({ ...prev, locationVerified: false }));
+   }
+   };
+
+   resolveLocation();
+
+   const interval = setInterval(() => {
+   if (locationSignalRef.current === 'waiting') resolveLocation();
+   else clearInterval(interval);
+   }, 4000);
+
+   return () => { isMounted = false; clearInterval(interval); };
+   }, [sessionData, resultStatus, getHybridPosition]);
+
 
  // ─── 2.5 Update verification status based on final result ──────────────
  useEffect(() => {
@@ -313,7 +324,7 @@ export default function AttendanceScreen() {
  // 5. Final Result Update
  if (result.status) {
  setResultStatus(result.status);
- setResultMessage(result.message || result.reason);
+ setResultMessage(result.reason || result.message);
  setIsSubmitting(false);
  queryClient.invalidateQueries({ queryKey: ['history'] });
  }

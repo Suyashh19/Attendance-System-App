@@ -73,32 +73,32 @@ export default function HomeScreen() {
  // ─── Socket.IO Real-time Events ─────────────────────────────────────────────
  const subjectIds = React.useMemo(() => subjects.map((s) => String(s.id)), [subjects]);
 
- useSocket({
- subjectIds,
- onSessionStarted: (data: SessionStartedPayload) => {
- if (data.serverTime) {
- const offset = new Date(data.serverTime).getTime() - Date.now();
- setTimeOffset(offset);
- }
- setActiveSessionId(data.sessionId);
- setActiveSessionData(data);
- if (user?.role === 'student') {
- router.push({
- pathname: '/(tabs)/attendance',
- params: { sessionData: JSON.stringify(data) },
- });
- }
- },
- onSessionEnded: (data) => {
- if (activeSessionId === data.sessionId) {
- setActiveSessionId(null);
- setActiveSessionData(null);
- }
- if (facultyActiveSession?.id === data.sessionId) {
- setFacultyActiveSession(null);
- }
- },
- });
+  useSocket({
+  subjectIds,
+  onSessionStarted: (data: SessionStartedPayload) => {
+  if (data.serverTime) {
+  const offset = new Date(data.serverTime).getTime() - Date.now();
+  setTimeOffset(offset);
+  }
+  setActiveSessionId(data.sessionId);
+  setActiveSessionData(data);
+  if (user?.role === 'student') {
+  router.push({
+  pathname: '/(tabs)/attendance',
+  params: { sessionData: JSON.stringify(data) },
+  });
+  }
+  },
+  onSessionEnded: (data) => {
+  if (activeSessionId === data.sessionId) {
+  setActiveSessionId(null);
+  setActiveSessionData(null);
+  }
+  if (facultyActiveSession?.id === Number(data.sessionId)) {
+  setFacultyActiveSession(null);
+  }
+  },
+  });
 
  // ─── Auto-expire session ───────────────────────────────────────────────────
  useEffect(() => {
@@ -120,6 +120,40 @@ export default function HomeScreen() {
 
  return () => clearInterval(interval);
  }, [activeSessionData?.sessionId, timeOffset]); // Only depend on sessionId to prevent re-runs on every data change
+
+ // ─── SESSION RECOVERY: Check for active sessions on mount/load ──────────────
+ useEffect(() => {
+ if (user?.role !== 'student' || subjects.length === 0 || activeSessionId) return;
+
+ const syncActiveSessions = async () => {
+ try {
+ console.log('[DEBUG] Syncing active sessions for enrolled subjects...');
+ // Check active sessions for all enrolled subjects in parallel
+ const results = await Promise.all(
+ subjects.map(s => getActiveSession(s.id).catch(() => null))
+ );
+
+ const firstActive = results.find(r => r && r.active && r.session);
+ if (firstActive) {
+ const data = firstActive.session;
+ const sId = data.sessionId || String(data.id);
+ console.log('[DEBUG] Recovered active session:', sId);
+ 
+ setActiveSessionId(sId);
+ setActiveSessionData(data);
+ 
+ router.push({
+ pathname: '/(tabs)/attendance',
+ params: { sessionData: JSON.stringify(data) },
+ });
+ }
+ } catch (err) {
+ console.error('[DEBUG] Session recovery failed:', err);
+ }
+ };
+
+ syncActiveSessions();
+ }, [subjects.length, user?.role, activeSessionId]);
 
  // ─── Handlers ───────────────────────────────────────────────────────────────
  const handleStartSessionPress = (subject: Subject) => {
@@ -295,13 +329,16 @@ export default function HomeScreen() {
  </View>
  <TouchableOpacity 
  onPress={() => user?.role === 'faculty' ? setShowCreateModal(true) : setShowEnrollModal(true)}
- className="bg-primary/20 p-2 rounded-xl border border-primary/30"
+ className="bg-primary/20 px-3 py-2 rounded-xl border border-primary/30 flex-row items-center"
  >
  <Ionicons 
- name={user?.role === 'faculty' ?"add" :"enter"} 
- size={24} 
+ name={user?.role === "faculty" ?"add" :"enter"} 
+ size={20} 
  color="#6366F1" 
  />
+ {user?.role === 'student' && (
+ <Text className="text-primary font-bold ml-1">Enroll here</Text>
+ )}
  </TouchableOpacity>
  </View>
 

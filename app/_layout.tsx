@@ -24,6 +24,7 @@ function AuthRedirectHandler() {
  if (!navigationState?.key || !isHydrated) return;
 
  const inAuthGroup = segments[0] === '(auth)';
+ const isForgotPassword = segments[segments.length - 1] === 'forgot-password';
 
  if (!isAuthenticated && !inAuthGroup) {
  if (segments[segments.length - 1] !== 'login') {
@@ -32,7 +33,7 @@ function AuthRedirectHandler() {
  }, 1);
  return () => clearTimeout(timer);
  }
- } else if (isAuthenticated && inAuthGroup) {
+ } else if (isAuthenticated && inAuthGroup && !isForgotPassword) {
  const timer = setTimeout(() => {
  router.replace('/(tabs)/home');
  }, 1);

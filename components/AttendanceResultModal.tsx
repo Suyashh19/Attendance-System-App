@@ -58,7 +58,7 @@ export function AttendanceResultModal({
  bg: 'bg-warning/10',
  icon: 'warning',
  title: 'Invalid Attempt',
- desc: message || 'Proxy detected. Device and location mismatch.',
+ desc: message ? `Reason: ${message}` : 'Proxy detected. Device and location mismatch.',
  };
  case 'EXPIRED':
  return {

@@ -136,7 +136,7 @@ export default function RegisterScreen() {
  return (
  <KeyboardAvoidingView 
  className="flex-1 bg-light"
- behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+ behavior="padding"
  >
  <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
  <View className="flex-1 justify-center px-6 py-12">

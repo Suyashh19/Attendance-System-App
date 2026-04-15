@@ -31,6 +31,9 @@ export function VerificationStatus({ state }: VerificationStatusProps) {
  } else if (status === false) {
  color = '#1A1D1F'; // danger
  StatusIcon = () => <Ionicons name="close-circle" size={20} color={color} />;
+ } else if (status === 'ready') {
+ color = '#3B82F6'; // info / ready (Blue)
+ StatusIcon = () => <Ionicons name="radio-button-on" size={20} color={color} />;
  } else {
  // null
  StatusIcon = () => <Ionicons name="ellipse-outline" size={20} color={color} />;
@@ -52,7 +55,7 @@ export function VerificationStatus({ state }: VerificationStatusProps) {
  className="text-xs font-bold ml-1"
  style={{ color }}
  >
- {status === true ? 'Verified' : status === false ? 'Failed' : 'Waiting...'}
+ {status === true ? 'Verified' : status === false ? 'Failed' : status === 'ready' ? 'Ready' : 'Waiting...'}
  </Text>
  </View>
  </View>

@@ -267,7 +267,7 @@ export default function ProfileScreen() {
    onRequestClose={() => setPasswordModalVisible(false)}
  >
    <KeyboardAvoidingView 
-     behavior={Platform.OS === "ios" ? "padding" : undefined}
+     behavior="padding"
      className="flex-1 justify-end bg-black/60"
    >
      <View className="bg-light p-6 rounded-t-3xl min-h-[400px]">
@@ -285,6 +285,15 @@ export default function ProfileScreen() {
          value={currentPassword}
          onChangeText={setCurrentPassword}
        />
+       <TouchableOpacity 
+         onPress={() => {
+           setPasswordModalVisible(false);
+           router.push('/(auth)/forgot-password');
+         }}
+         className="mt-[-8px] mb-4 self-end"
+       >
+         <Text className="text-primary font-medium text-xs">Forgot Password?</Text>
+       </TouchableOpacity>
        <Input
          label="New Password"
          secureTextEntry

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, FlatList, RefreshControl, ActivityIndicator, Alert, TouchableOpacity, AppState } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -7,6 +7,7 @@ import {
  registerPushToken, 
  startSession, 
  endSession,
+ getActiveSession,
  deleteSubject,
  unenrollSubject
 } from '../../services/attendance';
@@ -23,19 +24,20 @@ import { registerForPushNotifications } from '../../services/notification';
 import type { SessionStartedPayload, Subject } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../components/Button';
-import { useLocation } from '../../hooks/useLocation';
 
 export default function HomeScreen() {
  const router = useRouter();
  const queryClient = useQueryClient();
  const user = useAuthStore((s) => s.user);
- const { getLocation, getHighAccuracyPosition } = useLocation();
  
  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
  const [activeSessionData, setActiveSessionData] = useState<SessionStartedPayload | null>(null);
  const [timeOffset, setTimeOffset] = useState<number>(0); // server - local
  const [facultyActiveSession, setFacultyActiveSession] = useState<any>(null);
- 
+ // Sessions already opened on the attendance screen, so recovery never reopens one
+ const handledSessionsRef = useRef<Set<string>>(new Set());
+ const [foregroundTick, setForegroundTick] = useState(0);
+
  // Modals
  const [showCreateModal, setShowCreateModal] = useState(false);
  const [showEnrollModal, setShowEnrollModal] = useState(false);
@@ -43,7 +45,7 @@ export default function HomeScreen() {
 
  const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
  const [isActionLoading, setIsActionLoading] = useState(false);
- const [locationStatus, setLocationStatus] = useState<string | null>(null);
+ const [liveCount, setLiveCount] = useState<{ sessionId: number, presentCount: number } | null>(null);
  
  const [pendingSubjectId, setPendingSubjectId] = useState<number | null>(null);
  const [summaryData, setSummaryData] = useState<{ sessionId: number, attendances: any[] } | null>(null);
@@ -80,6 +82,7 @@ export default function HomeScreen() {
   const offset = new Date(data.serverTime).getTime() - Date.now();
   setTimeOffset(offset);
   }
+  handledSessionsRef.current.add(String(data.sessionId));
   setActiveSessionId(data.sessionId);
   setActiveSessionData(data);
   if (user?.role === 'student') {
@@ -98,6 +101,7 @@ export default function HomeScreen() {
   setFacultyActiveSession(null);
   }
   },
+  onAttendanceCount: (data) => setLiveCount({ sessionId: Number(data.sessionId), presentCount: data.presentCount }),
   });
 
  // ─── Auto-expire session ───────────────────────────────────────────────────
@@ -121,9 +125,19 @@ export default function HomeScreen() {
  return () => clearInterval(interval);
  }, [activeSessionData?.sessionId, timeOffset]); // Only depend on sessionId to prevent re-runs on every data change
 
+ // Re-check for a live session whenever the app returns to the foreground (e.g. opened from a push)
+ useEffect(() => {
+ const subscription = AppState.addEventListener('change', (state) => {
+ if (state === 'active') setForegroundTick((t) => t + 1);
+ });
+ return () => subscription.remove();
+ }, []);
+
  // ─── SESSION RECOVERY: Check for active sessions on mount/load ──────────────
  useEffect(() => {
  if (user?.role !== 'student' || subjects.length === 0 || activeSessionId) return;
+
+ let cancelled = false;
 
  const syncActiveSessions = async () => {
  try {
@@ -132,20 +146,34 @@ export default function HomeScreen() {
  const results = await Promise.all(
  subjects.map(s => getActiveSession(s.id).catch(() => null))
  );
+ if (cancelled) return;
 
- const firstActive = results.find(r => r && r.active && r.session);
- if (firstActive) {
- const data = firstActive.session;
- const sId = data.sessionId || String(data.id);
+ for (let i = 0; i < results.length; i++) {
+ const result = results[i];
+ if (!result?.active || !result.session) continue;
+
+ const data = result.session;
+ const sId = String(data.sessionId || data.id);
+ if (handledSessionsRef.current.has(sId)) continue;
+
+ // A session stays "active" until the faculty ends it; only recover it while its window is open
+ const offset = data.serverTime ? new Date(data.serverTime).getTime() - Date.now() : 0;
+ const expiryTime = new Date(data.windowExpiry).getTime();
+ if (isNaN(expiryTime) || Date.now() + offset >= expiryTime) continue;
+
  console.log('[DEBUG] Recovered active session:', sId);
- 
+ handledSessionsRef.current.add(sId);
+ const payload = { ...data, sessionId: sId, subjectName: subjects[i].name };
+
+ setTimeOffset(offset);
  setActiveSessionId(sId);
- setActiveSessionData(data);
- 
+ setActiveSessionData(payload);
+
  router.push({
  pathname: '/(tabs)/attendance',
- params: { sessionData: JSON.stringify(data) },
+ params: { sessionData: JSON.stringify(payload) },
  });
+ break;
  }
  } catch (err) {
  console.error('[DEBUG] Session recovery failed:', err);
@@ -153,7 +181,8 @@ export default function HomeScreen() {
  };
 
  syncActiveSessions();
- }, [subjects.length, user?.role, activeSessionId]);
+ return () => { cancelled = true; };
+ }, [subjects.length, user?.role, activeSessionId, foregroundTick]);
 
  // ─── Handlers ───────────────────────────────────────────────────────────────
  const handleStartSessionPress = (subject: Subject) => {
@@ -164,22 +193,12 @@ export default function HomeScreen() {
  if (!schedulingSubject) return;
  try {
  setIsActionLoading(true);
- 
- // Use the high-accuracy strategy for faculty (<= 30m, 3 retries)
- const loc = await getHighAccuracyPosition((status: string) => setLocationStatus(status));
- 
- if (!loc) {
- Alert.alert('Location Error', 'Unable to access GPS. Please check permissions.');
- return;
- }
 
  const session = await startSession({
  subjectId: schedulingSubject.id,
  date,
  startTime,
- endTime,
- latitude: loc.latitude,
- longitude: loc.longitude
+ endTime
  });
  
  setFacultyActiveSession({ ...session, subjectName: schedulingSubject.name });
@@ -189,7 +208,6 @@ export default function HomeScreen() {
  Alert.alert('Error', err.response?.data?.error || 'Failed to start session');
  } finally {
  setIsActionLoading(false);
- setLocationStatus(null);
  }
  };
 
@@ -429,6 +447,7 @@ export default function HomeScreen() {
  visible={!!facultyActiveSession}
  subjectName={facultyActiveSession?.subjectName || ''}
  correctCode={facultyActiveSession?.correctCode || ''}
+ presentCount={liveCount && liveCount.sessionId === Number(facultyActiveSession?.id) ? liveCount.presentCount : 0}
  onEndSession={handleEndSession}
  />
 
@@ -454,15 +473,10 @@ export default function HomeScreen() {
  />
  
  {/* Global Activity Indicator for actions with Status */}
- {(isActionLoading || locationStatus) && !showCreateModal && !showEnrollModal && (
+ {isActionLoading && !showCreateModal && !showEnrollModal && (
  <View className="absolute inset-0 bg-black/60 items-center justify-center p-6">
  <ActivityIndicator size="large" color="#6366F1" />
- {locationStatus && (
- <Text className="text-light-text font-bold mt-4 text-center">{locationStatus}</Text>
- )}
- {isActionLoading && !locationStatus && (
  <Text className="text-light-text font-bold mt-4 text-center">Starting Session...</Text>
- )}
  </View>
  )}
  </View>

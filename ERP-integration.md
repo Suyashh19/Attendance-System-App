@@ -31,7 +31,7 @@ The integration follows a multi-layered approach to ensure security and logical 
 
 ### 3.1 Mobile Application Layer
 - **Environment**: React Native (Expo)
-- **Role**: Captures attendance using the **Secure Verification Pipeline** (GPS geofencing, Device hardware binding, and Session window validation).
+- **Role**: Captures attendance using the **Secure Verification Pipeline** (Manual code entry, Device hardware binding, and Session window validation).
 - **Communication**: REST APIs over HTTPS.
 
 ### 3.2 Backend System (Source of Truth)

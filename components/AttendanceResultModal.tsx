@@ -34,7 +34,7 @@ export function AttendanceResultModal({
  bg: 'bg-primary/10',
  icon: null,
  title: 'Verifying Attendance...',
- desc: 'Please wait while we validate your device, location, and time window.',
+ desc: 'Please wait while we validate your device, code, and time window.',
  };
  case 'PRESENT':
  return {
@@ -58,7 +58,7 @@ export function AttendanceResultModal({
  bg: 'bg-warning/10',
  icon: 'warning',
  title: 'Invalid Attempt',
- desc: message ? `Reason: ${message}` : 'Proxy detected. Device and location mismatch.',
+ desc: message ? `Reason: ${message}` : 'Verification failed for this attempt.',
  };
  case 'EXPIRED':
  return {
@@ -66,7 +66,7 @@ export function AttendanceResultModal({
  bg: 'bg-warning/10',
  icon: 'hourglass-outline',
  title: 'Time Expired',
- desc: message || 'No code was selected within the time limit.',
+ desc: message || 'No code was entered within the time limit.',
  };
  default:
  return {

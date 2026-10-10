@@ -58,9 +58,7 @@ export interface AttendanceSession {
   subjectId: string;
   subjectName: string;
   correctCode: string;
-  options: string[];          // shuffled - includes correct + fakes
-  facultyLatitude: number;
-  facultyLongitude: number;
+  codeLength?: number;        // digits the student has to type
   startTime: string;          // ISO timestamp
   windowSeconds: number;      // 15
   serverTime?: string;        // ISO timestamp
@@ -69,19 +67,16 @@ export interface AttendanceSession {
 // ─── Attendance Submission ────────────────────────────────────────────────────
 export interface SubmitAttendancePayload {
   sessionId: string;
-  selectedCode: string;
+  code: string;
   deviceId: string;
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  isRetry?: boolean;
 }
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED';
 
 export interface AttendanceResult {
-  status: AttendanceStatus;
+  status: AttendanceStatus | 'WRONG_CODE'; // WRONG_CODE = typo, attempts still left
+  attemptsLeft?: number;
   message?: string;
   reason?: string;
   attendance?: any;
@@ -104,19 +99,16 @@ export interface AttendanceRecord {
 export interface VerificationState {
   sessionActive: boolean | null | 'ready';
   deviceMatched: boolean | null | 'ready';
-  locationVerified: boolean | null | 'ready';
   timeValid: boolean | null | 'ready';
 }
 
 // ─── Socket Events ────────────────────────────────────────────────────────────
 export interface SessionStartedPayload {
+  id?: number;                // REST payloads carry `id` instead of `sessionId`
   sessionId: string;
   subjectId: string;
   subjectName: string;
-  correctCode: string;
-  options: string[];
-  facultyLatitude: number;
-  facultyLongitude: number;
+  codeLength?: number;
   startTime: string;
   windowExpiry: string;
   windowSeconds: number;
@@ -126,6 +118,11 @@ export interface SessionStartedPayload {
 export interface SessionEndedPayload {
   sessionId: string;
   subjectId: string;
+}
+
+export interface AttendanceCountPayload {
+  sessionId: number;
+  presentCount: number;
 }
 
 export interface AttendanceResultPayload {

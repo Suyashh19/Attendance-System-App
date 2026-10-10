@@ -203,7 +203,6 @@ export default function ProfileScreen() {
  icon="lock-closed-outline"
  onPress={() => setPasswordModalVisible(true)}
  className="mt-6 border-primary/20 bg-primary/5"
- textStyle="text-primary"
  />
 
  <Button

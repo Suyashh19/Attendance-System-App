@@ -3,6 +3,7 @@ import type {
   SessionStartedPayload,
   SessionEndedPayload,
   AttendanceResultPayload,
+  AttendanceCountPayload,
 } from '../types';
 
 const SOCKET_URL = 'https://attendance-system-backend-uqgy.onrender.com';
@@ -85,4 +86,9 @@ export function onSessionEnded(callback: (data: SessionEndedPayload) => void): (
 export function onAttendanceResult(callback: (data: AttendanceResultPayload) => void): () => void {
   socket?.on('attendance_result', callback);
   return () => socket?.off('attendance_result', callback);
+}
+
+export function onAttendanceCount(callback: (data: AttendanceCountPayload) => void): () => void {
+  socket?.on('attendance_count', callback);
+  return () => socket?.off('attendance_count', callback);
 }

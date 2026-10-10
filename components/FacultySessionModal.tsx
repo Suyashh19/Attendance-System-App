@@ -8,6 +8,7 @@ interface FacultySessionModalProps {
  visible: boolean;
  subjectName: string;
  correctCode: string;
+ presentCount?: number;
  onEndSession: () => void;
 }
 
@@ -15,6 +16,7 @@ export function FacultySessionModal({
  visible, 
  subjectName, 
  correctCode, 
+ presentCount = 0,
  onEndSession 
 }: FacultySessionModalProps) {
  // Stable callback for timer
@@ -37,7 +39,8 @@ export function FacultySessionModal({
 
  <View style={styles.codeContainer}>
  <Text style={styles.codeLabel}>Student Verification Code</Text>
- <Text style={styles.codeText}>{correctCode}</Text>
+ <Text style={styles.codeText} numberOfLines={1} adjustsFontSizeToFit>{correctCode}</Text>
+ <Text style={styles.countText}>{presentCount} marked present</Text>
  </View>
 
  <View style={styles.timerContainer}>
@@ -53,7 +56,7 @@ export function FacultySessionModal({
 
  <View style={styles.footer}>
  <Text style={styles.infoText}>
- Show this code to your students. They have 15 seconds to select it on their devices.
+ Show this code to your students. They have 15 seconds to type it on their devices. Compare the present count with the headcount in the room.
  </Text>
  <Button 
  title="End Attendance Session" 
@@ -136,6 +139,12 @@ const styles = StyleSheet.create({
  fontSize: 64,
  fontWeight: '900',
  letterSpacing: 8,
+ },
+ countText: {
+ color: '#059669',
+ fontSize: 16,
+ fontWeight: '700',
+ marginTop: 8,
  },
  timerContainer: {
  alignItems: 'center',

@@ -10,7 +10,7 @@ interface VerificationStatusProps {
 export function VerificationStatus({ state }: VerificationStatusProps) {
  const items = [
  { key: 'deviceMatched', label: 'Device ID', icon: 'phone-portrait-outline' as const, color: '#1A1D1F' },
- { key: 'locationVerified', label: 'Local GPS', icon: 'location-outline' as const, color: '#6366F1' },
+ { key: 'timeValid', label: 'Time Window', icon: 'time-outline' as const, color: '#6366F1' },
  ];
 
  return (

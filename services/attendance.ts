@@ -56,8 +56,6 @@ interface StartSessionParams {
   date: string;
   startTime: string;
   endTime: string;
-  latitude?: number;
-  longitude?: number;
 }
 
 export async function startSession(params: StartSessionParams) {
@@ -65,9 +63,7 @@ export async function startSession(params: StartSessionParams) {
     subjectId: Number(params.subjectId),
     date: params.date,
     startTime: params.startTime,
-    endTime: params.endTime,
-    latitude: params.latitude,
-    longitude: params.longitude
+    endTime: params.endTime
   });
   return data.session;
 }

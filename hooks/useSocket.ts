@@ -6,8 +6,9 @@ import {
   onSessionStarted,
   onSessionEnded,
   onAttendanceResult,
+  onAttendanceCount,
 } from '../services/socket';
-import type { SessionStartedPayload, SessionEndedPayload, AttendanceResultPayload } from '../types';
+import type { SessionStartedPayload, SessionEndedPayload, AttendanceResultPayload, AttendanceCountPayload } from '../types';
 import { useAuthStore } from '../store/authStore';
 
 interface UseSocketOptions {
@@ -15,6 +16,7 @@ interface UseSocketOptions {
   onSessionStarted?: (data: SessionStartedPayload) => void;
   onSessionEnded?: (data: SessionEndedPayload) => void;
   onAttendanceResult?: (data: AttendanceResultPayload) => void;
+  onAttendanceCount?: (data: AttendanceCountPayload) => void;
 }
 
 export function useSocket(options: UseSocketOptions = {}): void {
@@ -41,6 +43,10 @@ export function useSocket(options: UseSocketOptions = {}): void {
     }
     if (options.onAttendanceResult) {
       const cleanup = onAttendanceResult(options.onAttendanceResult);
+      cleanupRefs.current.push(cleanup);
+    }
+    if (options.onAttendanceCount) {
+      const cleanup = onAttendanceCount(options.onAttendanceCount);
       cleanupRefs.current.push(cleanup);
     }
 

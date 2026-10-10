@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useRouter } from 'expo-router';
@@ -30,7 +30,7 @@ export default function ForgotPasswordScreen() {
     getValues,
     formState: { errors },
   } = useForm<FormData>({
-    resolver: zodResolver(step === 'email' ? step1Schema : step2Schema),
+    resolver: (step === 'email' ? zodResolver(step1Schema) : zodResolver(step2Schema)) as Resolver<FormData>,
     defaultValues: { email: '', otp: '', newPassword: '' },
   });
 

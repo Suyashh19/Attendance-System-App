@@ -14,10 +14,10 @@ This app is the student-facing terminal for the attendance system. The flow is a
 4.  **Real-Time Connection**: The app connects to the backend via `Socket.IO` using JWT authentication. It listens for the `session_started` event on the student's enrolled subjects.
 5.  **The 15-Second Window**: When a faculty member starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
 5.  **Multi-Layer Validation**: 
-    -   **GPS Lock**: Silent, high-accuracy `expo-location` GPS negotiation (background).
-    -   **Visual Code**: The student must select the correct 3-digit code from 4 shuffled options *(looking at the professor's board)*.
-6.  **Submission**: The payload `{ sessionId, selectedCode, deviceId, latitude, longitude }` is sent to the backend.
-7.  **Result Broadcast**: The backend verifies distance (strictly geofenced), hardware ID signatures, and code validity, then drops the result (`PRESENT`, `ABSENT`, or `INVALID`) back to the app via a private socket room.
+    -   **Device Check**: The hardware ID is matched against the device bound to the account.
+    -   **Manual Code**: The student types the 4-digit code shown on the professor's screen (3 tries, no options to pick from).
+6.  **Submission**: The payload `{ sessionId, code, deviceId }` is sent to the backend.
+7.  **Result Broadcast**: The backend verifies hardware ID signatures, the time window, and code validity, then drops the result (`PRESENT`, `ABSENT`, or `INVALID`) back to the app via a private socket room.
 
 ---
 
@@ -53,7 +53,6 @@ This app is the student-facing terminal for the attendance system. The flow is a
 -   **Real-Time**: Socket.IO-Client
 -   **Email Engine**: Resend (Serverless Email Platform)
 -   **Native APIs**: 
-    -   `expo-location` (Hybrid GPS Tracking)
     -   `expo-secure-store` (Encrypted JWT persistence)
     -   `expo-notifications` (Push notification integration)
     -   `expo-application` (Hardware Fingerprinting)
@@ -89,7 +88,7 @@ AttendanceApp/
 
 ### 1. Prerequisites
 - Node.js (v18+)
-- Expo Go app on a physical mobile device (GPS requires physical hardware).
+- Expo Go app on a physical mobile device.
 
 ### 2. Install Dependencies
 ```bash

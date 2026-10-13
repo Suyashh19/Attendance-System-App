@@ -1,119 +1,154 @@
-# 🚀 Real-Time Intelligent Attendance System (Mobile App)
+# Attendance System — Mobile App
 
-A production-ready **React Native (Expo)** application designed to prevent proxy attendance using a highly secure, multi-layer verification pipeline. It integrates seamlessly with the Node.js/Socket.IO backend to provide real-time attendance tracking with a verified light-theme UX.
+React Native (Expo) app for a real-time classroom attendance system, used by both faculty and students. A faculty member opens a 15-second attendance window and shows a 4-digit code; each student types it in from the one phone their account is locked to.
 
----
-
-## 🏗️ System Architecture & Workflow
-
-This app is the student-facing terminal for the attendance system. The flow is as follows:
-
-1.  **Hardware-Anchored Binding**: On first login, the app uses `expo-application` to extract the unchangeable, physical hardware ID of the phone (`ANDROID_ID` or Apple `IDFV`). This immutable ID binds the user to their physical device, mathematically preventing proxying via account sharing.
-2.  **OTP-Verified Registration**: All new registrations and password resets are secured via 6-digit OTPs delivered via **Resend**, ensuring email ownership.
-3.  **Enrollment & Approval**: Students request to join a subject using a unique 6-digit code. Faculty members must manually approve these requests in the "Pending Approvals" dashboard before the student is officially part of the roster.
-4.  **Real-Time Connection**: The app connects to the backend via `Socket.IO` using JWT authentication. It listens for the `session_started` event on the student's enrolled subjects.
-5.  **The 15-Second Window**: When a faculty member starts attendance, the socket event instantly triggers the `AttendanceScreen`. A critical 15-second SVG countdown timer begins.
-5.  **Multi-Layer Validation**: 
-    -   **GPS Lock**: Silent, high-accuracy `expo-location` GPS negotiation (background).
-    -   **Visual Code**: The student must select the correct 3-digit code from 4 shuffled options *(looking at the professor's board)*.
-6.  **Submission**: The payload `{ sessionId, selectedCode, deviceId, latitude, longitude }` is sent to the backend.
-7.  **Result Broadcast**: The backend verifies distance (strictly geofenced), hardware ID signatures, and code validity, then drops the result (`PRESENT`, `ABSENT`, or `INVALID`) back to the app via a private socket room.
+The API lives in a separate repository: [Attendance-System-Backend](https://github.com/Suyashh19/Attendance-System-Backend).
 
 ---
 
-## ✨ Features
+## How it works
 
-### Faculty Capabilities
--   **Class Management**: Organize subjects by Theory or Practical modules.
--   **Enrollment Approval**: Manage student rosters with a built-in approval/rejection workflow.
--   **Dynamic Sessions**: Start scheduled attendance windows with custom dates and times.
--   **Recent Classes Dashboard**: Quick-access list of the last 10 attendance sessions on the Reports tab.
--   **Lecture Details**: View a detailed breakdown of each lecture, including student names, PRNs, and status.
--   **Manual Overrides**: Manually change a student's attendance status (Present/Absent) to correct errors.
--   **Excel Exports**: Generate and download comprehensive attendance matrices directly to device storage.
+1. **Sign up** — registration and password reset are confirmed with a 6-digit OTP sent by email.
+2. **Join a subject** — a student requests to join with the subject's code, and the faculty approves or rejects the request.
+3. **Session starts** — the faculty starts attendance. Enrolled students get a `session_started` socket event and a push notification, and the attendance screen opens with a 15-second countdown.
+4. **Enter the code** — the student types the 4-digit code shown on the faculty's screen. The code is never sent to student phones, and a student gets 3 tries.
+5. **Submit** — the app sends `{ sessionId, code, deviceId }` to the backend.
+6. **Result** — the backend checks enrollment, device, time window and code, then sends `PRESENT`, `INVALID` or `ABSENT` back on the student's private socket room.
 
-### Student Capabilities
--   **Enrollment Tracking**: Join classes and monitor your approval status.
--   **Verified Onboarding**: OTP-based registration and secure **Self-Service Password Reset (SSPR)**.
--   **High-Security Verification**: Lock your account strictly to your physical device.
--   **Attendance Analytics**: Beautifully visualized history with "Overall Percentage" and "Subject-Specific" stats.
--   **Modern Light Theme**: System-wide high-fidelity light mode for maximum readability.
--   **Push Notifications**: Receive instant alerts when a professor starts taking attendance.
+### Device lock
+
+The app reads the phone's hardware ID (`ANDROID_ID` on Android, the vendor ID on iOS) with `expo-application`. The first attendance submission locks the account to that phone; submissions from any other phone are rejected. A student can move their account to a new phone with an email OTP, once every 30 days.
 
 ---
 
-## 🛠️ Tech Stack 
+## Features
 
--   **Framework**: React Native with Expo (Managed Workflow)
--   **Language**: TypeScript (Strict Mode)
--   **Routing**: Expo Router (v3)
--   **Styling**: NativeWind (Tailwind CSS for React Native) & Reanimated 3
--   **State Management**: Zustand (Auth & Device State)
--   **Data Fetching**: Axios & TanStack React Query
--   **Real-Time**: Socket.IO-Client
--   **Email Engine**: Resend (Serverless Email Platform)
--   **Native APIs**: 
-    -   `expo-location` (Hybrid GPS Tracking)
-    -   `expo-secure-store` (Encrypted JWT persistence)
-    -   `expo-notifications` (Push notification integration)
-    -   `expo-application` (Hardware Fingerprinting)
+**Faculty**
+
+- Create theory and practical subjects
+- Approve or reject enrollment requests
+- Start an attendance session and watch the present count update live
+- Reopen a running session after an app restart
+- See a per-lecture roster with names, PRNs and statuses
+- Manually change a student's status
+- Export a subject's attendance to Excel
+
+**Student**
+
+- Join subjects by code and track approval status
+- Mark attendance by typing the classroom code
+- See overall and per-subject attendance percentages and history
+- Get push notifications when a session starts and when the result is final
 
 ---
 
-## 📁 Project Structure
+## Tech stack
+
+| Area | Choice |
+|---|---|
+| Framework | React Native 0.81 with Expo SDK 54 |
+| Language | TypeScript |
+| Routing | Expo Router 6 (typed routes) |
+| Styling | NativeWind (Tailwind CSS), Reanimated 4 |
+| State | Zustand |
+| Data | Axios, TanStack React Query |
+| Forms | React Hook Form + Zod |
+| Real-time | Socket.IO client |
+| Native modules | `expo-secure-store`, `expo-notifications`, `expo-application` |
+| Tests | Jest with `jest-expo` |
+
+---
+
+## Project structure
 
 ```text
-AttendanceApp/
-├── app/                      # Expo Router views
-│   ├── (auth)/               # Login & Register
-│   ├── (tabs)/               # Home, History/Reports, Profile
-│   │   ├── home.tsx          # Dashboard, Active Sessions, Pending Approvals
-│   │   └── history.tsx       # Stats (Student) or Recent Classes & Downloads (Faculty)
-│   ├── attendance.tsx        # Core 15s Verification Screen
-│   ├── lecture-detail.tsx    # Faculty-only lecture breakdown & manual edit
-│   └── _layout.tsx           # Global Auth Gate & Providers
-├── components/               # UI Components
-│   ├── PendingApprovalsModal.tsx # Roster management UI
-│   ├── SchedulingModal.tsx       # Session timer & date config
-│   ├── AttendanceSummaryModal.tsx # Post-session summary
-│   ├── ExportFilterModal.tsx     # Excel export date range filters
-│   └── CountdownTimer.tsx        # SVG Animated 15s Ring
-├── services/                 # API & Socket logic
-├── store/                    # Zustand (Auth, Hydration)
-└── types/                    # TypeScript interfaces
+app/                      # Expo Router screens
+├── _layout.tsx           # Auth gate and providers
+├── index.tsx             # Entry redirect
+├── (auth)/               # Login, register, forgot password
+├── (tabs)/
+│   ├── home.tsx          # Classes
+│   ├── attendance.tsx    # Active session (hidden from the tab bar)
+│   ├── history.tsx       # History (student) or Reports (faculty)
+│   └── profile.tsx
+├── subject/[id].tsx      # Subject page (faculty and student views)
+└── lecture-detail.tsx    # Faculty roster for one lecture
+components/               # Shared UI, modals, and subject/ views
+constants/                # Colour palette and theme tokens
+hooks/                    # useDeviceId, useSocket
+services/                 # API client, auth, attendance, analytics, socket, notifications
+store/                    # Zustand auth store
+types/                    # Shared TypeScript types
+__tests__/                # Jest tests for the API client and socket service
+scripts/                  # One-off Python scripts used for theme refactors
 ```
 
 ---
 
-## 🚀 Setup & Installation
+## Getting started
 
-### 1. Prerequisites
-- Node.js (v18+)
-- Expo Go app on a physical mobile device (GPS requires physical hardware).
+### Prerequisites
 
-### 2. Install Dependencies
+- Node.js 18 or newer
+- Android Studio (or Xcode on macOS) for a development build
+- A physical phone for push notifications
+
+### 1. Install
+
 ```bash
+git clone https://github.com/Suyashh19/Attendance-System-App.git
+cd Attendance-System-App
 npm install
 ```
 
-### 3. Run the App
-```bash
-npx expo start
+### 2. Point the app at a backend
+
+By default the app talks to the hosted backend. To use a local or staging server, create a `.env` file in the project root:
+
+```env
+EXPO_PUBLIC_SERVER_URL=http://192.168.1.10:5000
 ```
-Scan the QR code printed in the terminal using the Expo Go app.
+
+Use your computer's LAN address rather than `localhost` so a phone can reach it. The same URL is used for both REST (`/api`) and Socket.IO.
+
+### 3. Run
+
+```bash
+npm run android   # build and run a development build on Android
+npm run ios       # same for iOS (macOS only)
+npm start         # start the Metro bundler only
+```
+
+Push notifications need a development build on a physical device; they do not work in Expo Go on Android.
+
+### 4. Check
+
+```bash
+npm run typecheck
+npm test
+```
 
 ---
 
-## 📦 Production Builds
+## Builds
 
-To build a standalone APK (Android):
-1.  Install EAS CLI: `npm install -g eas-cli`
-2.  Login: `eas login`
-3.  Build: `eas build -p android --profile preview`
+Builds use EAS with the profiles in `eas.json`:
+
+```bash
+npm install -g eas-cli
+eas login
+eas build -p android --profile preview      # installable APK
+eas build -p android --profile production   # store build
+```
+
+| Profile | Output |
+|---|---|
+| `development` | Development client APK, internal distribution |
+| `preview` | APK, internal distribution |
+| `production` | Store build with an auto-incremented version |
 
 ---
 
-## 🔮 Future Roadmap
-1.  **Biometric Verification**: Add FaceID/Fingerprint as a 4th layer of security.
-2.  **Offline Buffering**: Queue attendance submissions when network drops at the 0:01 second mark.
-3.  **Analytics V2**: Add predictive models for "At-Risk" students with low attendance.
+## Related documents
+
+- [`ERP-integration.md`](./ERP-integration.md) — architecture plan for integrating with external ERP systems

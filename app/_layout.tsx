@@ -3,7 +3,7 @@ import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-rout
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -15,10 +15,14 @@ import {
  PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { colors } from '../constants/theme';
+import { queryClient, queryPersister, CACHE_MAX_AGE } from '../services/queryClient';
+import { warmUpServer } from '../services/api';
+import { ServerWakeBanner } from '../components/ServerWakeBanner';
 
 import '../global.css';
 
-const queryClient = new QueryClient();
+// Wake the free-tier server while the splash screen is still up
+warmUpServer();
 
 // Same page colour behind every screen, so nothing flashes white during transitions
 const appTheme = {
@@ -113,9 +117,13 @@ export default function RootLayout() {
  return (
  <View className="flex-1 bg-light">
  <StatusBar style="light" />
- <QueryClientProvider client={queryClient}>
+ <PersistQueryClientProvider
+ client={queryClient}
+ persistOptions={{ persister: queryPersister, maxAge: CACHE_MAX_AGE }}
+ >
  <RootLayoutNav />
- </QueryClientProvider>
+ </PersistQueryClientProvider>
+ <ServerWakeBanner />
  </View>
  );
 }

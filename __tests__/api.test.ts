@@ -5,10 +5,12 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 import * as SecureStore from 'expo-secure-store';
-import api, { getErrorMessage, setUnauthorizedHandler } from '../services/api';
+import api, { getErrorMessage, setUnauthorizedHandler, useServerStatus } from '../services/api';
 
 // The response interceptor's error handler, called the way axios calls it
 const onResponseError = (api.interceptors.response as any).handlers[0].rejected as (error: any) => Promise<never>;
+const onResponse = (api.interceptors.response as any).handlers[0].fulfilled as (response: any) => any;
+const onRequest = (api.interceptors.request as any).handlers[0].fulfilled as (config: any) => Promise<any>;
 
 function httpError(status: number, url: string, withToken: boolean) {
   return {
@@ -73,5 +75,34 @@ describe('401 handling', () => {
     await expect(onResponseError(httpError(500, '/subjects/my', true))).rejects.toBeDefined();
 
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+});
+
+describe('server wake banner', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    useServerStatus.setState({ slowRequests: 0 });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('counts a request as slow only after 3 seconds, until it answers', async () => {
+    const config = await onRequest({ url: '/subjects/my', headers: {} });
+
+    jest.advanceTimersByTime(2900);
+    expect(useServerStatus.getState().slowRequests).toBe(0);
+
+    jest.advanceTimersByTime(200);
+    expect(useServerStatus.getState().slowRequests).toBe(1);
+
+    onResponse({ config, data: {} });
+    expect(useServerStatus.getState().slowRequests).toBe(0);
+  });
+
+  it('never shows the banner for a fast request, even one that fails', async () => {
+    const config = await onRequest({ url: '/subjects/my', headers: {} });
+    await expect(onResponseError({ response: { status: 500, data: {} }, config })).rejects.toBeDefined();
+
+    jest.advanceTimersByTime(5000);
+    expect(useServerStatus.getState().slowRequests).toBe(0);
   });
 });

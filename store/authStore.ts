@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { User, AuthState } from '../types';
 import { storeToken, clearToken, getStoredToken } from '../services/auth';
 import { initSocket, disconnectSocket } from '../services/socket';
+import { setUnauthorizedHandler } from '../services/api';
 
 const ABORT_TIMEOUT = 3000; // 3 seconds timeout for disk storage
 
@@ -97,3 +98,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ user });
   },
 }));
+
+// An expired or revoked token signs the user out instead of leaving every screen failing
+setUnauthorizedHandler(() => {
+  if (useAuthStore.getState().isAuthenticated) {
+    useAuthStore.getState().logout().catch(() => null);
+  }
+});

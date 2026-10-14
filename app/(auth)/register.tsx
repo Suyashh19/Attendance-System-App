@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Alert, TouchableOpacity } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { AuthShell } from '../../components/AuthShell';
+import { Text } from '../../components/Text';
 import { registerUser, loginUser, sendSignupOtp, verifySignupOtp } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
 import { useDeviceId } from '../../hooks/useDeviceId';
 import { Ionicons } from '@expo/vector-icons';
 import type { UserRole } from '../../types';
+import { colors } from '../../constants/theme';
 
 const registerSchema = z.object({
  name: z.string().min(2, 'Name is required'),
@@ -30,6 +33,14 @@ const registerSchema = z.object({
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
+
+const STEPS = ['email', 'otp', 'details'] as const;
+const STEP_LABELS = { email: 'Your email', otp: 'Verify code', details: 'Your profile' };
+
+const ROLES = [
+ { value: 'student' as const, label: 'Student', icon: 'school' as const },
+ { value: 'faculty' as const, label: 'Faculty', icon: 'briefcase' as const },
+];
 
 export default function RegisterScreen() {
  const [step, setStep] = useState<'email' | 'otp' | 'details'>('email');
@@ -134,26 +145,40 @@ export default function RegisterScreen() {
  };
 
  return (
- <KeyboardAvoidingView 
- className="flex-1 bg-light"
- behavior="padding"
- >
- <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
- <View className="flex-1 justify-center px-6 py-12">
- 
- <View className="mb-8">
- <Text className="text-3xl font-bold text-light-text mb-2">
- Create Account
- </Text>
- <Text className="text-light-muted text-base">
- {step === 'email' && "Let's verify your email first."}
- {step === 'otp' && "Enter the OTP sent to your email."}
- {step === 'details' && "Complete your profile."}
- </Text>
- </View>
+ <AuthShell
+      title="Create account"
+      subtitle={
+        step === 'email'
+          ? "Let's verify your email first"
+          : step === 'otp'
+            ? 'Enter the code sent to your email'
+            : 'Complete your profile'
+      }
+      footer={
+        <View className="flex-row justify-center mt-6">
+          <Text className="text-light-muted">Already have an account? </Text>
+          <Link href="/(auth)/login" asChild>
+            <Text className="text-primary font-bold">Sign In</Text>
+          </Link>
+        </View>
+      }
+    >
+      {/* Progress through the three steps */}
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-primary text-xs font-bold tracking-widest">
+          STEP {STEPS.indexOf(step) + 1} OF {STEPS.length}
+        </Text>
+        <Text className="text-light-muted text-xs font-semibold">{STEP_LABELS[step]}</Text>
+      </View>
+      <View className="flex-row mb-6">
+        {STEPS.map((s, i) => (
+          <View
+            key={s}
+            className={`flex-1 h-1.5 rounded-full ${i > 0 ? 'ml-2' : ''} ${i <= STEPS.indexOf(step) ? 'bg-primary' : 'bg-light-border'}`}
+          />
+        ))}
+      </View>
 
- <View className="bg-light-card shadow-sm p-6 rounded-3xl border border-light-border shadow-md">
- 
  {step === 'email' && (
    <>
      <Controller
@@ -211,7 +236,7 @@ export default function RegisterScreen() {
        onPress={onSendOtp}
        disabled={cooldown > 0 || loading}
      >
-       <Text className={`font-medium ${cooldown > 0 ? "text-light-muted" : "text-primary"}`}>
+       <Text className={`font-semibold ${cooldown > 0 ? "text-light-muted" : "text-primary"}`}>
          {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
        </Text>
      </TouchableOpacity>
@@ -221,34 +246,32 @@ export default function RegisterScreen() {
  {step === 'details' && (
    <>
    {/* Role Selector */}
-   <View className="mb-6">
-   <Text className="text-light-muted font-medium mb-2 ml-1 text-sm">I am a...</Text>
-   <View className="flex-row justify-between">
+   <View className="mb-5">
+   <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">I am a...</Text>
+   <View className="flex-row">
+   {ROLES.map(({ value, label, icon }, i) => {
+   const selected = selectedRole === value;
+   return (
    <TouchableOpacity
-   activeOpacity={0.7}
-   onPress={() => setValue('role', 'student')}
-   className={`w-[48%] py-3 rounded-xl border flex-row items-center justify-center ${
-   selectedRole === 'student' ? 'bg-primary/20 border-primary' : 'bg-transparent border-light-border'
-   }`}
+   key={value}
+   activeOpacity={0.8}
+   onPress={() => setValue('role', value)}
+   accessibilityRole="button"
+   accessibilityState={{ selected }}
+   className={`flex-1 p-4 rounded-2xl items-center ${i > 0 ? 'ml-3' : ''}`}
+   style={{
+   borderWidth: 1.5,
+   borderColor: selected ? colors.primary : colors.border,
+   backgroundColor: selected ? colors.primaryBg : colors.bg,
+   }}
    >
-   <Ionicons name="school" size={18} color={selectedRole === 'student' ? '#6366F1' : '#6B7280'} className="mr-2" />
-   <Text className={`font-bold ${selectedRole === 'student' ? 'text-primary' : 'text-light-muted'}`}>
-   Student
-   </Text>
+   <View className={`w-11 h-11 rounded-full items-center justify-center mb-2 ${selected ? 'bg-primary' : 'bg-light-card'}`}>
+   <Ionicons name={icon} size={20} color={selected ? colors.white : colors.muted} />
+   </View>
+   <Text className={`font-bold ${selected ? 'text-primary' : 'text-light-muted'}`}>{label}</Text>
    </TouchableOpacity>
-
-   <TouchableOpacity
-   activeOpacity={0.7}
-   onPress={() => setValue('role', 'faculty')}
-   className={`w-[48%] py-3 rounded-xl border flex-row items-center justify-center ${
-   selectedRole === 'faculty' ? 'bg-primary/20 border-primary' : 'bg-transparent border-light-border'
-   }`}
-   >
-   <Ionicons name="briefcase" size={18} color={selectedRole === 'faculty' ? '#6366F1' : '#6B7280'} className="mr-2" />
-   <Text className={`font-bold ${selectedRole === 'faculty' ? 'text-primary' : 'text-light-muted'}`}>
-   Faculty
-   </Text>
-   </TouchableOpacity>
+   );
+   })}
    </View>
    </View>
 
@@ -312,18 +335,6 @@ export default function RegisterScreen() {
    />
    </>
  )}
- </View>
-
- <View className="flex-row justify-center mt-8">
- <Text className="text-light-muted">Already have an account? </Text>
- <Link href="/(auth)/login" asChild>
- <Text className="text-primary font-bold">Sign In</Text>
- </Link>
- </View>
-
- </View>
- </ScrollView>
- </KeyboardAvoidingView>
- );
+ </AuthShell>
+  );
 }
-

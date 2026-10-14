@@ -1,68 +1,55 @@
 import React from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { VerificationState } from '../types';
+import { colors } from '../constants/theme';
+import { Text } from './Text';
+import { Card } from './Card';
 
 interface VerificationStatusProps {
- state: VerificationState;
+  state: VerificationState;
 }
 
+const ITEMS = [
+  { key: 'deviceMatched', label: 'Registered phone', icon: 'phone-portrait-outline' as const },
+  { key: 'timeValid', label: 'Time window', icon: 'time-outline' as const },
+];
+
 export function VerificationStatus({ state }: VerificationStatusProps) {
- const items = [
- { key: 'deviceMatched', label: 'Device ID', icon: 'phone-portrait-outline' as const, color: '#1A1D1F' },
- { key: 'timeValid', label: 'Time Window', icon: 'time-outline' as const, color: '#6366F1' },
- ];
+  return (
+    <Card className="p-5 w-full">
+      <Text className="text-light-muted font-bold text-xs tracking-widest mb-2">VERIFICATION</Text>
 
- return (
- <View className="bg-light-card shadow-sm rounded-2xl p-4 w-full border border-light-border">
- <Text className="text-light-text font-bold text-lg mb-4 ml-1">Verification Status</Text>
- 
- <View className="flex-row flex-wrap justify-between">
- {items.map(({ key, label, icon }) => {
- // Status: null = loading/unknown, true = success, false = fail
- const status = state[key as keyof VerificationState];
- 
- let color = '#6B7280'; // muted
- let StatusIcon = () => <ActivityIndicator size="small" color={color} />;
- 
- if (status === true) {
- color = '#059669'; // success
- StatusIcon = () => <Ionicons name="checkmark-circle" size={20} color={color} />;
- } else if (status === false) {
- color = '#1A1D1F'; // danger
- StatusIcon = () => <Ionicons name="close-circle" size={20} color={color} />;
- } else if (status === 'ready') {
- color = '#3B82F6'; // info / ready (Blue)
- StatusIcon = () => <Ionicons name="radio-button-on" size={20} color={color} />;
- } else {
- // null
- StatusIcon = () => <Ionicons name="ellipse-outline" size={20} color={color} />;
- }
+      {ITEMS.map(({ key, label, icon }, index) => {
+        // true = passed, false = failed, anything else = still waiting
+        const status = state[key as keyof VerificationState];
 
- return (
- <View key={key} className="w-[48%] mb-4 flex-row items-center p-2 rounded-xl bg-[#F7F9FC] border border-light-border/50">
- <View 
- className="p-2 rounded-full mr-3 border"
- style={{ backgroundColor: `${color}10`, borderColor: `${color}30` }}
- >
- <Ionicons name={icon} size={18} color={color} />
- </View>
- <View className="flex-1">
- <Text className="text-light-muted text-xs font-medium mb-1">{label}</Text>
- <View className="flex-row items-center">
- <StatusIcon />
- <Text 
- className="text-xs font-bold ml-1"
- style={{ color }}
- >
- {status === true ? 'Verified' : status === false ? 'Failed' : status === 'ready' ? 'Ready' : 'Waiting...'}
- </Text>
- </View>
- </View>
- </View>
- );
- })}
- </View>
- </View>
- );
+        const tone =
+          status === true
+            ? { color: colors.success, bg: colors.successBg, mark: 'checkmark-circle' as const, text: 'Verified' }
+            : status === false
+              ? { color: colors.danger, bg: colors.dangerBg, mark: 'close-circle' as const, text: 'Failed' }
+              : { color: colors.muted, bg: colors.bg, mark: 'ellipse-outline' as const, text: 'Waiting' };
+
+        return (
+          <View
+            key={key}
+            className={`flex-row items-center py-3 ${index > 0 ? 'border-t border-light-border' : ''}`}
+          >
+            <View
+              className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+              style={{ backgroundColor: tone.bg }}
+            >
+              <Ionicons name={icon} size={18} color={tone.color} />
+            </View>
+            <Text className="text-light-text font-semibold text-sm flex-1">{label}</Text>
+            <View className="flex-row items-center px-2.5 h-7 rounded-full" style={{ backgroundColor: tone.bg }}>
+              <Ionicons name={tone.mark} size={14} color={tone.color} style={{ marginRight: 4 }} />
+              <Text className="text-[11px] font-bold" style={{ color: tone.color }}>{tone.text}</Text>
+            </View>
+          </View>
+        );
+      })}
+    </Card>
+  );
 }

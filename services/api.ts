@@ -1,7 +1,12 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-export const BASE_URL = 'https://attendance-system-backend-uqgy.onrender.com/api';
+// Set EXPO_PUBLIC_SERVER_URL (e.g. in a .env file) to point the app at a local or staging backend
+export const SERVER_URL = (
+  process.env.EXPO_PUBLIC_SERVER_URL || 'https://attendance-system-backend-uqgy.onrender.com'
+).replace(/\/+$/, '');
+
+export const BASE_URL = `${SERVER_URL}/api`;
 
 export const API_ROUTES = {
   AUTH: {
@@ -26,6 +31,7 @@ export const API_ROUTES = {
     HISTORY: (subjectId: number) => `/sessions/${subjectId}/history`,
     ACTIVE: (subjectId: number) => `/sessions/${subjectId}/active`,
     RECENT: '/sessions/recent',
+    MY_ACTIVE: '/sessions/my-active',
   },
   ATTENDANCE: {
     BASE: '/attendance',
@@ -71,12 +77,36 @@ api.interceptors.response.use(
       (error as any).message = "Server error. Please try again.";
     }
 
-    if (error.response?.status === 401) {
-      // Token expired — clear storage
+    // A 401 on a request that carried a token means the session is no longer valid.
+    // Login and password checks answer 401/400 for a wrong password, which is not a dead session.
+    const url = error.config?.url ?? '';
+    const sentToken = !!error.config?.headers?.Authorization;
+    const isCredentialCheck = url.includes('/auth/login') || url.includes('/auth/update-password');
+
+    if (error.response?.status === 401 && sentToken && !isCredentialCheck) {
       await SecureStore.deleteItemAsync('auth_token').catch(() => null);
+      unauthorizedHandler?.();
     }
     return Promise.reject(error);
   }
 );
+
+// The auth store registers its logout here (importing the store directly would be a circular import)
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: () => void): void {
+  unauthorizedHandler = handler;
+}
+
+/** Best message to show the user for a failed request. */
+export function getErrorMessage(err: any, fallback: string): string {
+  const data = err?.response?.data;
+  if (data?.error) return data.error;
+  if (data?.message) return data.message;
+  if (err?.code === 'ECONNABORTED' || err?.message === 'Network Error') {
+    return 'Could not reach the server. Check your internet connection and try again.';
+  }
+  return fallback;
+}
 
 export default api;

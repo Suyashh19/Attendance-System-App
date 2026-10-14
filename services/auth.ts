@@ -42,6 +42,18 @@ export async function updateUserPassword(payload: { currentPassword: string; new
   return data;
 }
 
+// ─── Device Change (new phone or reinstall) ───────────────────────────────────
+
+export async function requestDeviceChange() {
+  const { data } = await api.post('/auth/device-change/request');
+  return data;
+}
+
+export async function confirmDeviceChange(payload: { otp: string; deviceId: string }) {
+  const { data } = await api.post('/auth/device-change/confirm', payload);
+  return data;
+}
+
 // ─── SecureStore Token Helpers ────────────────────────────────────────────────
 export async function storeToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(TOKEN_KEY, token);

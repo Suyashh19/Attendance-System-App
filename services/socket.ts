@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { SERVER_URL } from './api';
 import type {
   SessionStartedPayload,
   SessionEndedPayload,
@@ -6,10 +7,11 @@ import type {
   AttendanceCountPayload,
 } from '../types';
 
-const SOCKET_URL = 'https://attendance-system-backend-uqgy.onrender.com';
+const SOCKET_URL = SERVER_URL;
 
 let socket: Socket | null = null;
-const joinedRooms = new Set<string>();
+// subjectId -> how many screens currently need that room
+const joinedRooms = new Map<string, number>();
 
 export function initSocket(token: string): Socket {
   if (socket?.connected) return socket;
@@ -26,8 +28,7 @@ export function initSocket(token: string): Socket {
   socket.on('connect', () => {
     console.log('[Socket] Connected:', socket?.id);
     // Automatically re-join all rooms upon reconnection
-    joinedRooms.forEach((subjectId) => {
-      console.log(`[Socket] Re-joining room: subject_${subjectId}`);
+    joinedRooms.forEach((_count, subjectId) => {
       socket?.emit('join_subject', { subjectId });
     });
   });
@@ -58,16 +59,23 @@ export function disconnectSocket(): void {
 // ─── Room management ─────────────────────────────────────────────────────────
 export function joinSubjectRoom(subjectId: string): void {
   if (!subjectId) return;
-  joinedRooms.add(subjectId);
-  if (socket?.connected) {
+  const count = joinedRooms.get(subjectId) ?? 0;
+  joinedRooms.set(subjectId, count + 1);
+  if (count === 0 && socket?.connected) {
     socket.emit('join_subject', { subjectId });
   }
 }
 
+// Two screens can need the same room, so it is only left when the last one lets go
 export function leaveSubjectRoom(subjectId: string): void {
   if (!subjectId) return;
+  const count = joinedRooms.get(subjectId) ?? 0;
+  if (count > 1) {
+    joinedRooms.set(subjectId, count - 1);
+    return;
+  }
   joinedRooms.delete(subjectId);
-  if (socket?.connected) {
+  if (count === 1 && socket?.connected) {
     socket.emit('leave_subject', { subjectId });
   }
 }

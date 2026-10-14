@@ -1,5 +1,5 @@
 import api, { API_ROUTES } from './api';
-import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult, SubjectHistory, RecentSession, SessionDetailsResponse } from '../types';
+import type { AttendanceRecord, Subject, SubmitAttendancePayload, AttendanceResult, SubjectHistory, RecentSession, SessionDetailsResponse, EnrolledStudent, SubjectAnalytics, SubjectSession } from '../types';
 
 // ... (rest of imports remains same)
 
@@ -39,9 +39,10 @@ export async function unenrollSubject(subjectId: number): Promise<void> {
   await api.delete(API_ROUTES.ENROLLMENTS.UNENROLL(subjectId));
 }
 
-export async function getSubjectEnrollments(subjectId: number) {
+// Faculty: everyone who requested or joined the subject, whatever their status
+export async function getSubjectEnrollments(subjectId: number): Promise<EnrolledStudent[]> {
   const { data } = await api.get(API_ROUTES.ENROLLMENTS.BY_SUBJECT(subjectId));
-  return data.students;
+  return data.students ?? [];
 }
 
 export async function updateEnrollmentStatus(subjectId: number, studentId: number, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
@@ -73,6 +74,12 @@ export async function endSession(sessionId: string | number) {
   return data;
 }
 
+// Faculty: the session they still have open, if any (used to reopen it after an app restart)
+export async function getMyActiveSession() {
+  const { data } = await api.get(API_ROUTES.SESSIONS.MY_ACTIVE);
+  return data;
+}
+
 export async function getActiveSession(subjectId: number) {
   const { data } = await api.get(API_ROUTES.SESSIONS.ACTIVE(subjectId));
   return data;
@@ -84,19 +91,21 @@ export async function getAttendanceHistory(): Promise<SubjectHistory[]> {
   return Array.isArray(data) ? data : (data.records ?? data.history ?? []);
 }
 
-export async function deleteSubjectHistory(subjectId: number): Promise<void> {
-  await api.delete(`${API_ROUTES.ATTENDANCE.BASE}/subject/${subjectId}`);
-}
-
 // ─── Submit Attendance ────────────────────────────────────────────────────────
 export async function submitAttendance(payload: SubmitAttendancePayload): Promise<AttendanceResult> {
   const { data } = await api.post<AttendanceResult>(API_ROUTES.ATTENDANCE.SUBMIT, payload);
   return data;
 }
 
-export async function getSubjectAnalytics(subjectId: number) {
+export async function getSubjectAnalytics(subjectId: number): Promise<SubjectAnalytics> {
   const { data } = await api.get(API_ROUTES.ATTENDANCE.ANALYTICS(subjectId));
   return data;
+}
+
+// Faculty: every lecture taken for a subject, newest first
+export async function getSubjectSessions(subjectId: number): Promise<SubjectSession[]> {
+  const { data } = await api.get(API_ROUTES.SESSIONS.HISTORY(subjectId));
+  return data.history ?? [];
 }
 
 export async function editAttendanceRecord(sessionId: string | number, studentId: number, status: string, reason?: string) {

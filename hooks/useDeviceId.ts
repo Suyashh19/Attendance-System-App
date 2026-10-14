@@ -41,10 +41,13 @@ export function useDeviceId(): string | null {
         setStoreDeviceId(id);
       } catch (err) {
         console.error('[useDeviceId] Failed to fetch device ID:', err);
-        // 3. Absolute fallback (Time-based session mock)
-        const fallback = `dev_${Date.now()}`;
-        setDeviceId(fallback);
-        setStoreDeviceId(fallback);
+        // 3. Reuse the ID saved earlier if there is one. Never invent a throwaway ID:
+        // the account would be locked to a value this device can never produce again.
+        const saved = await SecureStore.getItemAsync(DEVICE_ID_KEY).catch(() => null);
+        if (saved) {
+          setDeviceId(saved);
+          setStoreDeviceId(saved);
+        }
       }
     })();
   }, [setStoreDeviceId]);

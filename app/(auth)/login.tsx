@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Alert, TouchableOpacity } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { AuthShell } from '../../components/AuthShell';
+import { Text } from '../../components/Text';
 import { loginUser } from '../../services/auth';
+import { getErrorMessage } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 import { useDeviceId } from '../../hooks/useDeviceId';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,7 +53,7 @@ export default function LoginScreen() {
  
  } catch (err: any) {
  console.error(err);
- const msg = err.response?.data?.message || 'Failed to login. Please try again.';
+ const msg = getErrorMessage(err, 'Failed to login. Please try again.');
  Alert.alert('Login Failed', msg);
  } finally {
  setLoading(false);
@@ -58,26 +61,18 @@ export default function LoginScreen() {
  };
 
  return (
- <KeyboardAvoidingView 
- className="flex-1 bg-light"
- behavior="padding"
- >
- <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
- <View className="flex-1 justify-center px-6 py-12">
- 
- <View className="items-center mb-10">
- <View className="w-20 h-20 bg-primary/20 rounded-full items-center justify-center mb-6">
- <Ionicons name="scan" size={40} color="#6366F1" />
- </View>
- <Text className="text-3xl font-bold text-light-text mb-2 text-center">
- Welcome Back
- </Text>
- <Text className="text-light-muted text-base text-center">
- Sign in to manage your attendance
- </Text>
- </View>
-
- <View className="bg-light-card shadow-sm p-6 rounded-3xl border border-light-border shadow-md">
+ <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to manage your attendance"
+      footer={
+        <View className="flex-row justify-center mt-6">
+          <Text className="text-light-muted">Don't have an account? </Text>
+          <Link href="/(auth)/register" asChild>
+            <Text className="text-primary font-bold">Register here</Text>
+          </Link>
+        </View>
+      }
+    >
  <Controller
  control={control}
  name="email"
@@ -115,6 +110,7 @@ export default function LoginScreen() {
 
  <Button
  title="Sign In"
+ icon="arrow-forward"
  onPress={handleSubmit(onSubmit)}
  loading={loading}
  className="mt-6"
@@ -122,22 +118,11 @@ export default function LoginScreen() {
 
  <View className="mt-4 items-center">
    <Link href="/(auth)/forgot-password" asChild>
-     <TouchableOpacity p-2>
-       <Text className="text-primary font-medium">Forgot Password?</Text>
+     <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+       <Text className="text-primary font-semibold">Forgot password?</Text>
      </TouchableOpacity>
    </Link>
  </View>
- </View>
-
- <View className="flex-row justify-center mt-8">
- <Text className="text-light-muted">Don't have an account? </Text>
- <Link href="/(auth)/register" asChild>
- <Text className="text-primary font-bold">Register here</Text>
- </Link>
- </View>
-
- </View>
- </ScrollView>
- </KeyboardAvoidingView>
- );
+ </AuthShell>
+  );
 }

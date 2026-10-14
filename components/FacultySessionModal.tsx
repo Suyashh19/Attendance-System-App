@@ -1,167 +1,136 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from './Button';
 import { CountdownTimer } from './CountdownTimer';
+import { Text } from './Text';
+import { Hero } from './Hero';
+import { colors, shadow } from '../constants/theme';
 
 interface FacultySessionModalProps {
- visible: boolean;
- subjectName: string;
- correctCode: string;
- presentCount?: number;
- onEndSession: () => void;
+  visible: boolean;
+  subjectName: string;
+  correctCode: string;
+  presentCount?: number;
+  /** Seconds the attendance window stays open (from the server) */
+  duration?: number;
+  /** Changes for every new session so the countdown restarts */
+  sessionKey?: string | number;
+  /** True while the end request is in flight */
+  ending?: boolean;
+  onEndSession: () => void;
 }
 
-export function FacultySessionModal({ 
- visible, 
- subjectName, 
- correctCode, 
- presentCount = 0,
- onEndSession 
+// Students get a short grace period for network delay, so the session is closed just after the countdown
+const AUTO_END_DELAY_MS = 2500;
+
+export function FacultySessionModal({
+  visible,
+  subjectName,
+  correctCode,
+  presentCount = 0,
+  duration = 15,
+  sessionKey,
+  ending = false,
+  onEndSession
 }: FacultySessionModalProps) {
- // Stable callback for timer
- const handleTimerComplete = React.useCallback(() => {
- console.log('[DEBUG] Faculty timer expired');
- }, []);
+  const insets = useSafeAreaInsets();
+  const [windowClosed, setWindowClosed] = useState(false);
+  const onEndSessionRef = useRef(onEndSession);
+  onEndSessionRef.current = onEndSession;
 
+  useEffect(() => {
+    setWindowClosed(false);
+  }, [sessionKey, visible]);
 
- return (
- <Modal visible={visible} animationType="slide" transparent>
- <View style={styles.overlay}>
- <View style={styles.container}>
- <View style={styles.header}>
- <Text style={styles.title}>{subjectName}</Text>
- <View style={styles.badge}>
- <View style={styles.dot} />
- <Text style={styles.badgeText}>LIVE SESSION</Text>
- </View>
- </View>
+  // When the countdown finishes, end the session automatically and show the summary
+  useEffect(() => {
+    if (!visible || !windowClosed) return;
+    const timer = setTimeout(() => onEndSessionRef.current(), AUTO_END_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [visible, windowClosed]);
 
- <View style={styles.codeContainer}>
- <Text style={styles.codeLabel}>Student Verification Code</Text>
- <Text style={styles.codeText} numberOfLines={1} adjustsFontSizeToFit>{correctCode}</Text>
- <Text style={styles.countText}>{presentCount} marked present</Text>
- </View>
+  // Stable callback for timer
+  const handleTimerComplete = React.useCallback(() => {
+    setWindowClosed(true);
+  }, []);
 
- <View style={styles.timerContainer}>
- <CountdownTimer 
- key={visible ? 'active' : 'inactive'}
- duration={15} 
- size={120} 
- strokeWidth={8}
- onComplete={handleTimerComplete} 
- />
- <Text style={styles.timerSubtext}>Remaining time for submissions</Text>
- </View>
+  const digits = String(correctCode).split('');
+  const digitSize = digits.length <= 4 ? 52 : digits.length <= 6 ? 38 : 26;
 
- <View style={styles.footer}>
- <Text style={styles.infoText}>
- Show this code to your students. They have 15 seconds to type it on their devices. Compare the present count with the headcount in the room.
- </Text>
- <Button 
- title="End Attendance Session" 
- onPress={onEndSession} 
- variant="danger"
- className="mt-4"
- />
- </View>
- </View>
- </View>
- </Modal>
- );
+  return (
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+      <Hero flat className="flex-1 px-6" style={{ paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }}>
+
+        {/* Which class, and whether the window is still open */}
+        <View className="items-center">
+          <View className={`flex-row items-center px-3 h-8 rounded-full ${windowClosed ? 'bg-white/10' : 'bg-success'}`}>
+            <View className={`w-2 h-2 rounded-full mr-2 ${windowClosed ? 'bg-white/50' : 'bg-white'}`} />
+            <Text className={`text-[11px] font-bold tracking-widest ${windowClosed ? 'text-white/70' : 'text-white'}`}>
+              {windowClosed ? 'WINDOW CLOSED' : 'LIVE SESSION'}
+            </Text>
+          </View>
+          <Text className="text-white text-2xl font-extrabold text-center mt-3" numberOfLines={2}>
+            {subjectName}
+          </Text>
+        </View>
+
+        {/* The code students type, large enough to read from the back of the room */}
+        <View className="flex-1 justify-center">
+          <View className="bg-white rounded-[32px] px-4 py-7 items-center" style={shadow.glow}>
+            <Text className="text-light-muted text-xs font-bold tracking-widest mb-4">STUDENT VERIFICATION CODE</Text>
+            <View
+              className="flex-row justify-center self-stretch"
+              accessible
+              accessibilityLabel={`Verification code ${digits.join(' ')}`}
+            >
+              {digits.map((digit, i) => (
+                <View
+                  key={i}
+                  className="flex-1 mx-1 rounded-2xl bg-light-primaryBg items-center justify-center"
+                  style={{ height: digitSize + 36, maxWidth: 72 }}
+                >
+                  <Text className="text-navy font-extrabold" style={{ fontSize: digitSize }}>{digit}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View className="flex-row items-center bg-success-bg px-4 h-10 rounded-full mt-5">
+              <Ionicons name="people" size={16} color={colors.success} style={{ marginRight: 8 }} />
+              <Text className="text-success text-[15px] font-bold">{presentCount} marked present</Text>
+            </View>
+          </View>
+
+          <View className="items-center mt-8">
+            <CountdownTimer
+              key={visible ? `active-${sessionKey ?? ''}` : 'inactive'}
+              duration={duration}
+              size={132}
+              strokeWidth={9}
+              tone="dark"
+              onComplete={handleTimerComplete}
+            />
+            <Text className="text-white/70 text-[13px] font-medium mt-4 text-center">
+              {windowClosed ? 'Time is up. Preparing the lecture summary...' : 'Remaining time for submissions'}
+            </Text>
+          </View>
+        </View>
+
+        <View>
+          <Text className="text-white/60 text-center text-[13px] leading-5 px-2">
+            Show this code to your students. They have {duration} seconds to type it on their devices. Compare the present count with the headcount in the room.
+          </Text>
+          <Button
+            title={windowClosed ? 'View Summary' : 'End Attendance Session'}
+            onPress={onEndSession}
+            loading={ending}
+            variant={windowClosed ? 'primary' : 'dangerSoft'}
+            icon={windowClosed ? 'stats-chart' : 'stop-circle-outline'}
+            className="mt-5 w-full"
+          />
+        </View>
+      </Hero>
+    </Modal>
+  );
 }
-
-const styles = StyleSheet.create({
- overlay: {
- flex: 1,
- backgroundColor: 'rgba(0,0,0,0.85)',
- justifyContent: 'center',
- padding: 24,
- },
- container: {
- backgroundColor: '#FFFFFF',
- borderRadius: 32,
- padding: 24,
- borderWidth: 1,
- borderColor: '#E5EAF2',
- },
- header: {
- alignItems: 'center',
- marginBottom: 32,
- },
- title: {
- color: '#1A1D1F',
- fontSize: 24,
- fontWeight: 'bold',
- textAlign: 'center',
- marginBottom: 8,
- },
- badge: {
- flexDirection: 'row',
- alignItems: 'center',
- backgroundColor: 'rgba(99, 102, 241, 0.2)',
- paddingHorizontal: 12,
- paddingVertical: 4,
- borderRadius: 99,
- borderWidth: 1,
- borderColor: 'rgba(99, 102, 241, 0.3)',
- },
- dot: {
- width: 6,
- height: 6,
- borderRadius: 3,
- backgroundColor: '#6366F1',
- marginRight: 6,
- },
- badgeText: {
- color: '#6366F1',
- fontSize: 10,
- fontWeight: 'bold',
- letterSpacing: 1,
- },
- codeContainer: {
- alignItems: 'center',
- backgroundColor: '#F7F9FC',
- borderRadius: 24,
- padding: 24,
- marginBottom: 32,
- borderWidth: 1,
- borderColor: '#E5EAF2',
- },
- codeLabel: {
- color: '#6B7280',
- fontSize: 14,
- marginBottom: 8,
- fontWeight: '600',
- },
- codeText: {
- color: '#6366F1',
- fontSize: 64,
- fontWeight: '900',
- letterSpacing: 8,
- },
- countText: {
- color: '#059669',
- fontSize: 16,
- fontWeight: '700',
- marginTop: 8,
- },
- timerContainer: {
- alignItems: 'center',
- marginBottom: 32,
- },
- timerSubtext: {
- color: '#6B7280',
- fontSize: 12,
- marginTop: 12,
- },
- footer: {
- alignItems: 'center',
- },
- infoText: {
- color: '#9CA3AF',
- textAlign: 'center',
- fontSize: 14,
- lineHeight: 20,
- },
-});

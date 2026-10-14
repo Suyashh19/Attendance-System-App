@@ -50,6 +50,8 @@ export interface Subject {
     enrollments: number;
   };
   enrollmentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** Sent to students only */
+  faculty?: { name: string | null };
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -116,8 +118,8 @@ export interface SessionStartedPayload {
 }
 
 export interface SessionEndedPayload {
-  sessionId: string;
-  subjectId: string;
+  sessionId: string | number;
+  subjectId: string | number;
 }
 
 export interface AttendanceCountPayload {
@@ -127,8 +129,9 @@ export interface AttendanceCountPayload {
 
 export interface AttendanceResultPayload {
   status: AttendanceStatus;
-  sessionId: string;
+  sessionId: string | number;
   message?: string;
+  reason?: string | null;
 }
 
 // ─── API Response Wrapper ─────────────────────────────────────────────────────
@@ -179,7 +182,7 @@ export interface SessionStudentAttendance {
   name: string;
   prn: string | null;
   rollNo: string | null;
-  status: 'PRESENT' | 'ABSENT';
+  status: 'PRESENT' | 'ABSENT' | 'INVALID';
   reason: string | null;
   editedByFaculty: boolean;
 }
@@ -193,4 +196,36 @@ export interface SessionDetailsResponse {
     subjectType: 'theory' | 'practical';
   };
   students: SessionStudentAttendance[];
+}
+
+// ─── Faculty: one subject's class list ────────────────────────────────────────
+export interface EnrolledStudent {
+  id: number;
+  name: string | null;
+  email: string;
+  prn: string | null;
+  rollNo: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+}
+
+export interface StudentAttendanceSummary {
+  id: number;
+  PRESENT: number;
+  ABSENT: number;
+  INVALID: number;
+  totalSessions: number;
+  attendancePercentage: string;
+}
+
+export interface SubjectAnalytics {
+  totalSessions: number;
+  summary: StudentAttendanceSummary[];
+}
+
+export interface SubjectSession {
+  id: number;
+  subjectId: number;
+  isActive: boolean;
+  startTime: string;
+  endTime: string | null;
 }

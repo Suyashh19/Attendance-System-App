@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Alert } from 'react-native';
 import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { AuthShell } from '../../components/AuthShell';
+import { Text } from '../../components/Text';
 import { forgotPassword, resetPassword } from '../../services/auth';
 
 const step1Schema = z.object({
@@ -68,25 +70,21 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      className="flex-1 bg-light"
-      behavior="padding"
+    <AuthShell
+      title="Reset password"
+      subtitle={
+        step === 'email'
+          ? 'Enter your email to receive a code'
+          : 'Enter the code from your email and a new password'
+      }
+      footer={
+        <View className="flex-row justify-center mt-6">
+          <Link href="/(auth)/login" asChild>
+            <Text className="text-primary font-bold">Back to Login</Text>
+          </Link>
+        </View>
+      }
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View className="flex-1 justify-center px-6 py-12">
-          
-          <View className="mb-8">
-            <Text className="text-3xl font-bold text-light-text mb-2">
-              Reset Password
-            </Text>
-            <Text className="text-light-muted text-base">
-              {step === 'email' 
-                ? "Enter your email to receive an OTP." 
-                : "Enter the OTP sent to your email and your new password."}
-            </Text>
-          </View>
-
-          <View className="bg-light-card shadow-sm p-6 rounded-3xl border border-light-border shadow-md">
             
             <Controller
               control={control}
@@ -109,7 +107,7 @@ export default function ForgotPasswordScreen() {
 
             {step === 'email' ? (
               <Button
-                title="Send Request"
+                title="Send Code"
                 onPress={handleSubmit(onSendOtp)}
                 loading={loading}
                 className="mt-4"
@@ -158,16 +156,6 @@ export default function ForgotPasswordScreen() {
                 />
               </>
             )}
-          </View>
-
-          <View className="flex-row justify-center mt-8">
-            <Link href="/(auth)/login" asChild>
-              <Text className="text-primary font-bold">Back to Login</Text>
-            </Link>
-          </View>
-
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          </AuthShell>
   );
 }

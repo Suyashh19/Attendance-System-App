@@ -112,10 +112,3 @@ export async function editAttendanceRecord(sessionId: string | number, studentId
   const { data } = await api.put(API_ROUTES.ATTENDANCE.EDIT(sessionId, studentId), { status, reason });
   return data;
 }
-
-// ─── Register Push Token with Backend ────────────────────────────────────────
-export async function registerPushToken(expoPushToken: string): Promise<void> {
-  await api.post(API_ROUTES.AUTH.PUSH_TOKEN, { token: expoPushToken }).catch(() => {
-    // Non-critical — don't throw
-  });
-}

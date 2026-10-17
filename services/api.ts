@@ -13,7 +13,6 @@ export const API_ROUTES = {
   AUTH: {
     LOGIN: '/auth/login',
     REGISTER: '/auth/register',
-    PUSH_TOKEN: '/auth/push-token',
   },
   SUBJECTS: {
     MY: '/subjects/my',

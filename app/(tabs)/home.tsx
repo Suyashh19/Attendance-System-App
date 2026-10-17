@@ -6,7 +6,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
  getMySubjects, 
  getAttendanceHistory,
- registerPushToken, 
  startSession, 
  endSession,
  getActiveSession,
@@ -19,7 +18,6 @@ import { FacultySessionModal } from '../../components/FacultySessionModal';
 import { AttendanceSummaryModal } from '../../components/AttendanceSummaryModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
-import { registerForPushNotifications } from '../../services/notification';
 import type { SessionStartedPayload, Subject } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../components/Button';
@@ -100,17 +98,6 @@ export default function HomeScreen() {
  const filteredSubjects = user?.role === 'faculty' && selectedCategory
  ? subjects.filter(s => s.type === selectedCategory)
  : subjects;
-
- // ─── Push Notifications ─────────────────────────────────────────────────────
- useEffect(() => {
- async function setupPush() {
- const token = await registerForPushNotifications();
- if (token) {
- await registerPushToken(token);
- }
- }
- setupPush();
- }, []);
 
  // ─── Socket.IO Real-time Events ─────────────────────────────────────────────
  const subjectIds = React.useMemo(() => subjects.map((s) => String(s.id)), [subjects]);

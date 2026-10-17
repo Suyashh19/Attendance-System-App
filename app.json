@@ -17,17 +17,17 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.attendancesystem.app"
+      "bundleIdentifier": "com.suyashpatil.attendance"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#F7F9FC"
       },
-      "package": "com.attendancesystem.app",
-      "permissions": [
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+      "package": "com.suyashpatil.attendance",
+      "blockedPermissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
@@ -36,14 +36,6 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#6D3BF5",
-          "defaultChannel": "attendance"
-        }
-      ],
       "expo-font",
       "@react-native-community/datetimepicker"
     ],

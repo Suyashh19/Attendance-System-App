@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
@@ -7,7 +8,8 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeviceId } from '../../hooks/useDeviceId';
-import { updatePrn, deleteAccount, updateUserPassword, requestDeviceChange, confirmDeviceChange } from '../../services/auth';
+import { updatePrn, deleteAccount, requestPasswordChange, confirmPasswordChange, requestDeviceChange, confirmDeviceChange } from '../../services/auth';
+import { maskEmail } from '../../utils/maskEmail';
 import { getErrorMessage } from '../../services/api';
 import { colors } from '../../constants/theme';
 import { Text } from '../../components/Text';
@@ -27,10 +29,16 @@ export default function ProfileScreen() {
 
  // Password Modal State
  const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
- const [currentPassword, setCurrentPassword] = useState('');
+ const [passwordOtp, setPasswordOtp] = useState('');
+ const [isRequestingPasswordOtp, setIsRequestingPasswordOtp] = useState(false);
  const [newPassword, setNewPassword] = useState('');
  const [confirmPassword, setConfirmPassword] = useState('');
  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+ // Delete Account State
+ const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
+ const [deletePassword, setDeletePassword] = useState('');
+ const [isDeleting, setIsDeleting] = useState(false);
 
  // Device Change State
  const [isDeviceModalVisible, setDeviceModalVisible] = useState(false);
@@ -39,7 +47,7 @@ export default function ProfileScreen() {
  const [isConfirmingDevice, setIsConfirmingDevice] = useState(false);
 
  const handleLogout = () => {
- Alert.alert(
+ showAlert(
  'Sign Out',
  'Are you sure you want to sign out?',
  [
@@ -58,11 +66,11 @@ export default function ProfileScreen() {
 
  const handleUpdatePrn = async () => {
  if (!prnInput.trim()) {
- Alert.alert('Error', 'Please enter a valid PRN');
+ showAlert('Error', 'Please enter a valid PRN');
  return;
  }
 
- Alert.alert(
+ showAlert(
  'Confirm PRN',
  'PRN cannot be changed once saved. Please enter carefully. Do you want to save this PRN?',
  [
@@ -74,10 +82,10 @@ export default function ProfileScreen() {
  setIsUpdating(true);
  const updatedUser = await updatePrn(prnInput);
  setUser(updatedUser);
- Alert.alert('Success', 'PRN saved successfully and is now locked.');
+ showAlert('Success', 'PRN saved successfully and is now locked.');
  } catch (err: any) {
  const msg = err.response?.data?.error || 'Failed to update PRN';
- Alert.alert('Error', msg);
+ showAlert('Error', msg);
  } finally {
  setIsUpdating(false);
  }
@@ -98,7 +106,7 @@ export default function ProfileScreen() {
  setDeviceOtp('');
  setDeviceModalVisible(true);
  } catch (err: any) {
- Alert.alert('Could not send code', getErrorMessage(err, 'Please try again.'));
+ showAlert('Could not send code', getErrorMessage(err, 'Please try again.'));
  } finally {
  setIsRequestingDeviceOtp(false);
  }
@@ -107,7 +115,7 @@ export default function ProfileScreen() {
  const handleConfirmDeviceChange = async () => {
  if (!user || !deviceId) return;
  if (deviceOtp.trim().length !== 6) {
- Alert.alert('Error', 'Enter the 6-digit code from your email.');
+ showAlert('Error', 'Enter the 6-digit code from your email.');
  return;
  }
 
@@ -117,66 +125,102 @@ export default function ProfileScreen() {
  setUser({ ...user, deviceId: res.user?.deviceId ?? deviceId });
  setDeviceModalVisible(false);
  setDeviceOtp('');
- Alert.alert('Phone Linked', 'You can now mark attendance from this phone.');
+ showAlert('Phone Linked', 'You can now mark attendance from this phone.');
  } catch (err: any) {
- Alert.alert('Could not link phone', getErrorMessage(err, 'Please try again.'));
+ showAlert('Could not link phone', getErrorMessage(err, 'Please try again.'));
  } finally {
  setIsConfirmingDevice(false);
  }
  };
 
+ // Asks first, then emails a code to the registered address. The user never types an email.
+ const handleStartPasswordChange = () => {
+   showAlert(
+     'Change password?',
+     `We will email a 6-digit code to ${maskEmail(user?.email)} to confirm it is you.`,
+     [
+       { text: 'Cancel', style: 'cancel' },
+       { text: 'Send code', onPress: () => sendPasswordCode(true) },
+     ]
+   );
+ };
+
+ const sendPasswordCode = async (openSheet: boolean) => {
+   try {
+     setIsRequestingPasswordOtp(true);
+     await requestPasswordChange();
+     setPasswordOtp('');
+     if (openSheet) {
+       setNewPassword('');
+       setConfirmPassword('');
+       setPasswordModalVisible(true);
+     } else {
+       showAlert('Code Sent', `A new code is on its way to ${maskEmail(user?.email)}.`);
+     }
+   } catch (err: any) {
+     showAlert('Could not send code', getErrorMessage(err, 'Please try again.'));
+   } finally {
+     setIsRequestingPasswordOtp(false);
+   }
+ };
+
  const handleUpdatePassword = async () => {
-   if (!currentPassword || !newPassword || !confirmPassword) {
-     Alert.alert('Error', 'All fields are required.');
+   if (passwordOtp.trim().length !== 6) {
+     showAlert('Error', 'Enter the 6-digit code from your email.');
+     return;
+   }
+   if (!newPassword || !confirmPassword) {
+     showAlert('Error', 'Enter and confirm your new password.');
      return;
    }
    if (newPassword.length < 6) {
-     Alert.alert('Error', 'New password must be at least 6 characters.');
+     showAlert('Error', 'New password must be at least 6 characters.');
      return;
    }
    if (newPassword !== confirmPassword) {
-     Alert.alert('Error', 'New passwords do not match.');
+     showAlert('Error', 'New passwords do not match.');
      return;
    }
 
    try {
      setIsUpdatingPassword(true);
-     const res = await updateUserPassword({ currentPassword, newPassword });
-     Alert.alert('Success', res.message || 'Password updated successfully.');
+     const res = await confirmPasswordChange({ otp: passwordOtp.trim(), newPassword });
+     showAlert('Success', res.message || 'Password updated successfully.');
      setPasswordModalVisible(false);
-     setCurrentPassword('');
+     setPasswordOtp('');
      setNewPassword('');
      setConfirmPassword('');
    } catch (err: any) {
-     const msg = err.response?.data?.error || 'Failed to update password.';
-     Alert.alert('Error', msg);
+     showAlert('Could not update password', getErrorMessage(err, 'Please try again.'));
    } finally {
      setIsUpdatingPassword(false);
    }
  };
 
+ // Opens the password sheet: deleting needs the account password, not just a tap
  const confirmDeleteAccount = () => {
- Alert.alert(
- 'DELETE ACCOUNT?',
- 'This will permanently delete your PRN, attendance records, and profile. THIS ACTION CANNOT BE UNDONE.',
- [
- { text: 'Cancel', style: 'cancel' },
- {
- text: 'DELETE PERMANENTLY',
- style: 'destructive',
- onPress: async () => {
+ setDeletePassword('');
+ setDeleteModalVisible(true);
+ };
+
+ const handleDeleteAccount = async () => {
+ if (!deletePassword) {
+ showAlert('Error', 'Enter your password to delete your account.');
+ return;
+ }
  try {
- await deleteAccount();
+ setIsDeleting(true);
+ await deleteAccount(deletePassword);
+ setDeleteModalVisible(false);
  await logout();
  router.replace('/(auth)/login');
- Alert.alert('Account Deleted', 'Your data has been removed from our servers.');
+ showAlert('Account Deleted', 'Your data has been removed from our servers.');
  } catch (err: any) {
- Alert.alert('Error', err.response?.data?.error || 'Failed to delete account');
+ showAlert('Could not delete account', getErrorMessage(err, 'Please try again.'));
+ } finally {
+ setIsDeleting(false);
+ setDeletePassword('');
  }
- }
- }
- ]
- );
  };
 
  return (
@@ -312,7 +356,7 @@ export default function ProfileScreen() {
  icon="lock-closed"
  title="Update Password"
  subtitle="Change the password you sign in with"
- onPress={() => setPasswordModalVisible(true)}
+ onPress={handleStartPasswordChange}
  divider
  />
  <SettingsRow
@@ -369,24 +413,26 @@ export default function ProfileScreen() {
  visible={isPasswordModalVisible}
  onClose={() => setPasswordModalVisible(false)}
  title="Update Password"
- subtitle="Use at least 6 characters for the new password."
+ subtitle={`Enter the code we emailed to ${maskEmail(user?.email)}, then choose a new password.`}
  >
  <Input
- label="Current Password"
- secureTextEntry
- icon="lock-closed-outline"
- value={currentPassword}
- onChangeText={setCurrentPassword}
+ label="6-digit code"
+ placeholder="123456"
+ icon="mail-outline"
+ keyboardType="number-pad"
+ maxLength={6}
+ value={passwordOtp}
+ onChangeText={(t) => setPasswordOtp(t.replace(/\D/g, ''))}
  />
  <TouchableOpacity
- onPress={() => {
- setPasswordModalVisible(false);
- router.push('/(auth)/forgot-password');
- }}
+ onPress={() => sendPasswordCode(false)}
+ disabled={isRequestingPasswordOtp}
  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
  className="mt-[-8px] mb-4 self-end"
  >
- <Text className="text-primary font-semibold text-xs">Forgot Password?</Text>
+ <Text className="text-primary font-semibold text-xs">
+ {isRequestingPasswordOtp ? 'Sending...' : 'Resend code'}
+ </Text>
  </TouchableOpacity>
  <Input
  label="New Password"
@@ -410,6 +456,27 @@ export default function ProfileScreen() {
  loading={isUpdatingPassword}
  className="mt-2"
  />
+ </BottomSheet>
+
+ {/* Delete Account Modal */}
+ <BottomSheet
+ visible={isDeleteModalVisible}
+ onClose={() => !isDeleting && setDeleteModalVisible(false)}
+ title="Delete Account"
+ subtitle="This permanently deletes your profile and attendance records. It cannot be undone."
+ >
+ <Input
+ label="Enter your password to confirm"
+ secureTextEntry
+ icon="lock-closed-outline"
+ value={deletePassword}
+ onChangeText={setDeletePassword}
+ autoCapitalize="none"
+ />
+ <View className="flex-row mt-2">
+ <Button title="Cancel" variant="outline" onPress={() => setDeleteModalVisible(false)} disabled={isDeleting} className="flex-1 mr-3" />
+ <Button title="Delete" variant="danger" onPress={handleDeleteAccount} loading={isDeleting} disabled={!deletePassword} className="flex-1" />
+ </View>
  </BottomSheet>
 
  </ScrollView>

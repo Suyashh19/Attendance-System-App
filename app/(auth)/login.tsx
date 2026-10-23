@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Alert, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -54,7 +55,7 @@ export default function LoginScreen() {
  } catch (err: any) {
  console.error(err);
  const msg = getErrorMessage(err, 'Failed to login. Please try again.');
- Alert.alert('Login Failed', msg);
+ showAlert('Login Failed', msg);
  } finally {
  setLoading(false);
  }

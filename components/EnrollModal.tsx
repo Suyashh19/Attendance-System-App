@@ -1,5 +1,6 @@
 import React, { useState, memo } from 'react';
-import { View, TextInput, Alert } from 'react-native';
+import { View, TextInput } from 'react-native';
+import { showAlert } from '../store/dialogStore';
 import { Button } from './Button';
 import { BottomSheet } from './BottomSheet';
 import { enrollInSubject } from '../services/attendance';
@@ -25,7 +26,7 @@ export const EnrollModal = memo(({ visible, onClose, onSuccess }: EnrollModalPro
       onSuccess();
       setEnrollCode('');
     } catch (err: any) {
-      Alert.alert('Could not enroll', getErrorMessage(err, 'Something went wrong. Please try again.'));
+      showAlert('Could not enroll', getErrorMessage(err, 'Something went wrong. Please try again.'));
     } finally {
       setLoading(false);
     }

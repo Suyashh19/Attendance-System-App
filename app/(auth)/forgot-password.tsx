@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Alert } from 'react-native';
+import { View } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -40,11 +41,11 @@ export default function ForgotPasswordScreen() {
     try {
       setLoading(true);
       const res = await forgotPassword(data.email);
-      Alert.alert('OTP Sent', res.message || 'Check your email for the OTP.');
+      showAlert('OTP Sent', res.message || 'Check your email for the OTP.');
       setStep('reset');
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to send OTP.';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -58,12 +59,12 @@ export default function ForgotPasswordScreen() {
         otp: data.otp,
         newPassword: data.newPassword,
       });
-      Alert.alert('Success', 'Password has been reset successfully.', [
+      showAlert('Success', 'Password has been reset successfully.', [
         { text: 'Login', onPress: () => router.replace('/(auth)/login') },
       ]);
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to reset password.';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
     } finally {
       setLoading(false);
     }

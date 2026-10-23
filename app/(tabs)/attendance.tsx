@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, Alert, ScrollView } from 'react-native';
+import { View, ScrollView } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -224,7 +225,7 @@ export default function AttendanceScreen() {
  if (!sessionData || sessionState !== 'ACTIVE' || isSubmitting || !submittedCode) return;
 
  if (!deviceId) {
- Alert.alert('Error', 'Unable to verify device ID. Please restart the app to mark attendance.');
+ showAlert('Error', 'Unable to verify device ID. Please restart the app to mark attendance.');
  return;
  }
 

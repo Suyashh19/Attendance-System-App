@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Alert, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -91,7 +92,7 @@ export default function RegisterScreen() {
      setCooldown(30);
    } catch (err: any) {
      const msg = err.response?.data?.error || 'Failed to send OTP. Please try again.';
-     Alert.alert('Error', msg);
+     showAlert('Error', msg);
    } finally {
      setLoading(false);
    }
@@ -107,7 +108,7 @@ export default function RegisterScreen() {
      setStep('details');
    } catch (err: any) {
      const msg = err.response?.data?.error || 'Invalid or expired OTP.';
-     Alert.alert('Verification Failed', msg);
+     showAlert('Verification Failed', msg);
    } finally {
      setLoading(false);
    }
@@ -115,7 +116,7 @@ export default function RegisterScreen() {
 
  const onSubmit = async (data: RegisterFormData) => {
  if (!deviceId) {
- Alert.alert('Registration Failed', 'Unable to fetch device ID. Please restart the app and try again.');
+ showAlert('Registration Failed', 'Unable to fetch device ID. Please restart the app and try again.');
  return;
  }
 
@@ -138,7 +139,7 @@ export default function RegisterScreen() {
  } catch (err: any) {
  console.error(err);
  const msg = err.response?.data?.error || 'Failed to register. Please try again.';
- Alert.alert('Registration Failed', msg);
+ showAlert('Registration Failed', msg);
  } finally {
  setLoading(false);
  }

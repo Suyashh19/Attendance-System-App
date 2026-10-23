@@ -18,6 +18,7 @@ import { colors } from '../constants/theme';
 import { queryClient, queryPersister, CACHE_MAX_AGE } from '../services/queryClient';
 import { warmUpServer } from '../services/api';
 import { ServerWakeBanner } from '../components/ServerWakeBanner';
+import { DialogHost } from '../components/DialogHost';
 
 import '../global.css';
 
@@ -124,6 +125,7 @@ export default function RootLayout() {
  <RootLayoutNav />
  </PersistQueryClientProvider>
  <ServerWakeBanner />
+ <DialogHost />
  </View>
  );
 }

@@ -46,12 +46,22 @@ export interface Subject {
   code: string;
   facultyId: number;
   type: 'theory' | 'practical';
+  /** Semester or academic year, e.g. "Sem 5" or "2026-27" (optional) */
+  span?: string | null;
   _count?: {
     enrollments: number;
   };
   enrollmentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   /** Sent to students only */
   faculty?: { name: string | null };
+}
+
+/** What deleting a subject would remove, shown in the delete confirmation */
+export interface SubjectSummary {
+  subjectId: number;
+  lectures: number;
+  records: number;
+  students: number;
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────

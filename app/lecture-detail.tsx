@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { showAlert } from '../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSessionDetails, editAttendanceRecord } from '../services/attendance';
@@ -34,7 +35,7 @@ export default function LectureDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ['subject-analytics'] });
     },
     onError: (err: any) => {
-      Alert.alert('Error', err.response?.data?.error || 'Failed to update attendance');
+      showAlert('Error', err.response?.data?.error || 'Failed to update attendance');
     }
   });
 

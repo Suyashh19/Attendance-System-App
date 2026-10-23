@@ -63,7 +63,9 @@ export function SubjectCard({
             <View className="bg-light px-2 py-0.5 rounded-md mr-2">
               <Text className="text-light-muted text-[11px] font-bold tracking-wide">{subject.code}</Text>
             </View>
-            <Text className="text-light-muted text-xs font-medium">{isPractical ? 'Practical' : 'Theory'}</Text>
+            <Text className="text-light-muted text-xs font-medium flex-1" numberOfLines={1}>
+              {isPractical ? 'Practical' : 'Theory'}{subject.span ? ` · ${subject.span}` : ''}
+            </Text>
           </View>
         </View>
 

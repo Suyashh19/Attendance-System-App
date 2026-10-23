@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
+import { View, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { showAlert } from '../store/dialogStore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from './Button';
@@ -46,11 +47,11 @@ export function ExportFilterModal({ visible, onClose, subjects, initialSubjectId
 
   const handleConfirm = () => {
     if (!selectedSubject) {
-      Alert.alert('No Subject Selected', 'Please select a subject to export data for.');
+      showAlert('No Subject Selected', 'Please select a subject to export data for.');
       return;
     }
     if (endDate < startDate) {
-      Alert.alert('Invalid Range', 'The "To" date must be on or after the "From" date.');
+      showAlert('Invalid Range', 'The "To" date must be on or after the "From" date.');
       return;
     }
 

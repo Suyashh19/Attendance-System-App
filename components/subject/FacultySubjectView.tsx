@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, FlatList, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +9,14 @@ import {
   getSubjectAnalytics,
   getSubjectSessions,
   updateEnrollmentStatus,
+  approveAllEnrollments,
+  getSubjectSummary,
   deleteSubject,
 } from '../../services/attendance';
 import { getErrorMessage } from '../../services/api';
+import { deleteWarning, subjectSubtitle } from '../../utils/subjectText';
+import { offerToShareSubject, shareSubjectCode } from '../../utils/shareSubject';
+import { CreateSubjectModal } from '../CreateSubjectModal';
 import { colors, MIN_ATTENDANCE_PERCENT } from '../../constants/theme';
 import type { Subject, EnrolledStudent, StudentAttendanceSummary, SubjectSession } from '../../types';
 import { ScreenHeader } from '../ScreenHeader';
@@ -48,6 +54,8 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDuplicate, setShowDuplicate] = useState(false);
 
   const enrollments = useQuery({
     queryKey: ['enrollments', subjectId],
@@ -94,11 +102,11 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
       queryClient.invalidateQueries({ queryKey: ['subjects'] });
       queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
     },
-    onError: (err) => Alert.alert('Could not update', getErrorMessage(err, 'Please try again.')),
+    onError: (err) => showAlert('Could not update', getErrorMessage(err, 'Please try again.')),
   });
 
   const confirmRemove = (student: EnrolledStudent) => {
-    Alert.alert(
+    showAlert(
       'Remove from class',
       `${student.name || 'This student'} will no longer be able to mark attendance for ${subject.name}. Their past records are kept, and you can add them back from the Requests tab.`,
       [
@@ -115,10 +123,37 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     );
   };
 
-  const confirmDelete = () => {
-    Alert.alert(
+  const { mutate: approveAll, isPending: isApprovingAll } = useMutation({
+    mutationFn: () => approveAllEnrollments(subjectId),
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+      queryClient.invalidateQueries({ queryKey: ['subjects'] });
+      showAlert('Approved', `${count} ${count === 1 ? 'student was' : 'students were'} added to the class.`);
+    },
+    onError: (err) => showAlert('Could not approve', getErrorMessage(err, 'Please try again.')),
+  });
+
+  const confirmApproveAll = () => {
+    showAlert(
+      'Approve all requests',
+      `Add all ${pending.length} waiting ${pending.length === 1 ? 'student' : 'students'} to ${subject.name}? Students you removed earlier are not affected.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve all', onPress: () => approveAll() },
+      ]
+    );
+  };
+
+  const confirmDelete = async () => {
+    // Ask the server what a delete would remove, so the warning has real numbers.
+    // If that fails the generic warning is shown; the delete itself is never blocked.
+    setDeleting(true);
+    const summary = await getSubjectSummary(subjectId).catch(() => null);
+    setDeleting(false);
+
+    showAlert(
       'Delete Subject',
-      `Are you sure you want to delete "${subject.name}"? This will permanently wipe all attendance data for this class.\n\nNote: If you want to keep a record of this data, download the Excel file from Reports first.`,
+      deleteWarning(subject.name, summary),
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -133,7 +168,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
               queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
             } catch (err) {
               setDeleting(false);
-              Alert.alert('Error', getErrorMessage(err, 'Failed to delete subject'));
+              showAlert('Error', getErrorMessage(err, 'Failed to delete subject'));
             }
           },
         },
@@ -340,22 +375,14 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     <View className="flex-1 bg-light">
       <ScreenHeader
         title={subject.name}
-        subtitle={`${subject.code} · ${subject.type === 'practical' ? 'Practical' : 'Theory'}`}
+        subtitle={subjectSubtitle(subject)}
         right={
-          <TouchableOpacity
-            onPress={confirmDelete}
-            disabled={deleting}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Delete subject"
-            className="w-11 h-11 bg-white/10 border border-white/15 rounded-full items-center justify-center ml-3"
-          >
-            {deleting ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Ionicons name="trash-outline" size={18} color={colors.white} />
-            )}
-          </TouchableOpacity>
+          <View className="flex-row ml-3">
+            <HeaderButton icon="create-outline" label="Edit subject" onPress={() => setShowEdit(true)} />
+            <HeaderButton icon="share-social-outline" label="Share subject code" onPress={() => void shareSubjectCode(subject)} />
+            <HeaderButton icon="copy-outline" label="Duplicate subject" onPress={() => setShowDuplicate(true)} />
+            <HeaderButton icon="trash-outline" label="Delete subject" onPress={confirmDelete} busy={deleting} />
+          </View>
         }
       >
         {/* Numbers at a glance */}
@@ -384,6 +411,17 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           <View>
             {/* Section switch */}
             <SegmentedControl options={tabs} value={tab} onChange={setTab} className="mb-4" />
+
+            {tab === 'requests' && pending.length > 1 && (
+              <Button
+                title={`Approve all (${pending.length})`}
+                icon="checkmark-done-outline"
+                onPress={confirmApproveAll}
+                loading={isApprovingAll}
+                disabled={isUpdating}
+                className="mb-4"
+              />
+            )}
 
             {tab === 'students' && approved.length > 0 && (
               <View className="mb-4">
@@ -443,7 +481,55 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           }
         }}
       />
+
+      <CreateSubjectModal
+        visible={showEdit}
+        subject={subject}
+        onClose={() => setShowEdit(false)}
+        onSuccess={() => {
+          setShowEdit(false);
+          queryClient.invalidateQueries({ queryKey: ['subjects'] });
+          queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
+        }}
+      />
+
+      <CreateSubjectModal
+        visible={showDuplicate}
+        prefill={{ name: subject.name, type: subject.type, span: subject.span }}
+        onClose={() => setShowDuplicate(false)}
+        onSuccess={(_type, created) => {
+          setShowDuplicate(false);
+          queryClient.invalidateQueries({ queryKey: ['subjects'] });
+          offerToShareSubject(created, 'Copy created');
+        }}
+      />
     </View>
+  );
+}
+
+/** A round icon button in the page header. */
+function HeaderButton({
+  icon,
+  label,
+  onPress,
+  busy,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={busy}
+      hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="w-10 h-10 bg-white/10 border border-white/15 rounded-full items-center justify-center ml-2"
+    >
+      {busy ? <ActivityIndicator size="small" color={colors.white} /> : <Ionicons name={icon} size={17} color={colors.white} />}
+    </TouchableOpacity>
   );
 }
 

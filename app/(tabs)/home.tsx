@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, Alert, TouchableOpacity, AppState } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState, ScrollView } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +29,8 @@ import { Hero } from '../../components/Hero';
 import { Avatar } from '../../components/Avatar';
 import { Chip } from '../../components/Chip';
 import { EmptyState, SectionLabel } from '../../components/EmptyState';
+import { filterSubjects, distinctSpans } from '../../utils/subjectFilter';
+import { offerToShareSubject } from '../../utils/shareSubject';
 
 export default function HomeScreen() {
  const router = useRouter();
@@ -48,6 +51,7 @@ export default function HomeScreen() {
  const [showEnrollModal, setShowEnrollModal] = useState(false);
 
  const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
+ const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
  const [isActionLoading, setIsActionLoading] = useState(false);
  const [liveCount, setLiveCount] = useState<{ sessionId: number, presentCount: number } | null>(null);
  
@@ -95,8 +99,11 @@ export default function HomeScreen() {
  };
 
  // Filter subjects based on selection
- const filteredSubjects = user?.role === 'faculty' && selectedCategory
- ? subjects.filter(s => s.type === selectedCategory)
+ const spans = distinctSpans(subjects);
+ // A chosen semester that no longer exists (renamed or removed) must not leave the list empty
+ const activeSpan = selectedSpan && spans.includes(selectedSpan) ? selectedSpan : null;
+ const filteredSubjects = user?.role === 'faculty'
+ ? filterSubjects(subjects, selectedCategory, '', activeSpan)
  : subjects;
 
  // ─── Socket.IO Real-time Events ─────────────────────────────────────────────
@@ -212,7 +219,7 @@ export default function HomeScreen() {
  // ─── Handlers ───────────────────────────────────────────────────────────────
  // One confirmation, then the session starts right away (it always starts "now")
  const handleStartSessionPress = (subject: Subject) => {
- Alert.alert(
+ showAlert(
  'Start Attendance',
  `Start an attendance session for "${subject.name}"?\n\nStudents get a few seconds to type the code you show them, so start only when the class is ready.`,
  [
@@ -252,7 +259,7 @@ export default function HomeScreen() {
  setFacultyActiveSession({ ...session, subjectName: subject.name, windowSeconds });
  setActiveSessionId(session.id);
  } catch (err: any) {
- Alert.alert('Could not start session', getErrorMessage(err, 'Failed to start session. Please try again.'));
+ showAlert('Could not start session', getErrorMessage(err, 'Failed to start session. Please try again.'));
  } finally {
  setIsActionLoading(false);
  }
@@ -276,7 +283,7 @@ export default function HomeScreen() {
  }
  } catch (err: any) {
  // Keep the session on screen so the faculty can retry instead of silently losing it
- Alert.alert(
+ showAlert(
  'Could not end session',
  `${getErrorMessage(err, 'Something went wrong.')}\n\nThe session also closes by itself shortly after the timer runs out.`,
  [
@@ -333,17 +340,19 @@ export default function HomeScreen() {
  const handleCloseCreateModal = React.useCallback(() => setShowCreateModal(false), []);
  const handleCloseEnrollModal = React.useCallback(() => setShowEnrollModal(false), []);
 
- const handleCreateSuccess = React.useCallback((type: 'theory' | 'practical') => {
+ const handleCreateSuccess = React.useCallback((type: 'theory' | 'practical', created: Subject) => {
  setShowCreateModal(false);
+ // Show the new subject: switch to its type and clear a semester filter that would hide it
  setSelectedCategory(type);
+ setSelectedSpan(null);
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
- Alert.alert('Success', 'Subject created successfully');
+ offerToShareSubject(created);
  }, [queryClient]);
 
  const handleEnrollSuccess = React.useCallback(() => {
  setShowEnrollModal(false);
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
- Alert.alert('Request Sent', 'Your faculty needs to approve the request before you can mark attendance for this class.');
+ showAlert('Request Sent', 'Your faculty needs to approve the request before you can mark attendance for this class.');
  }, [queryClient]);
 
  // ─── Renderers ──────────────────────────────────────────────────────────────
@@ -473,6 +482,15 @@ export default function HomeScreen() {
  />
  ))}
  </View>
+ )}
+
+ {isFaculty && spans.length > 0 && (
+ <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ paddingHorizontal: 16 }}>
+ <Chip label="All semesters" selected={activeSpan === null} onPress={() => setSelectedSpan(null)} className="mr-2" />
+ {spans.map((span) => (
+ <Chip key={span} label={span} selected={activeSpan === span} onPress={() => setSelectedSpan(span)} className="mr-2" />
+ ))}
+ </ScrollView>
  )}
 
  {filteredSubjects.length > 0 && (

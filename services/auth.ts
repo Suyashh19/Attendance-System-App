@@ -42,6 +42,17 @@ export async function updateUserPassword(payload: { currentPassword: string; new
   return data;
 }
 
+// Change password while signed in: a code goes to the account's own email, so no email is typed
+export async function requestPasswordChange() {
+  const { data } = await api.post('/auth/update-password/request');
+  return data;
+}
+
+export async function confirmPasswordChange(payload: { otp: string; newPassword: string }) {
+  const { data } = await api.post('/auth/update-password/confirm', payload);
+  return data;
+}
+
 // ─── Device Change (new phone or reinstall) ───────────────────────────────────
 
 export async function requestDeviceChange() {
@@ -78,7 +89,8 @@ export async function updatePrn(prn: string) {
   return data;
 }
 
-export async function deleteAccount() {
-  const { data } = await api.delete('/auth/delete-account');
+// The password is required, so a borrowed unlocked phone cannot delete an account
+export async function deleteAccount(password: string) {
+  const { data } = await api.delete('/auth/delete-account', { data: { password } });
   return data;
 }

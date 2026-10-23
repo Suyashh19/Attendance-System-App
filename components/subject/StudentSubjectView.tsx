@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, FlatList, Alert, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,7 +51,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
   };
 
   const confirmLeave = () => {
-    Alert.alert(
+    showAlert(
       'Leave Class',
       `Are you sure you want to unenroll from "${subject.name}"? This will remove your attendance record for this subject.`,
       [
@@ -67,7 +68,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
               queryClient.invalidateQueries({ queryKey: ['history'] });
             } catch (err) {
               setLeaving(false);
-              Alert.alert('Error', getErrorMessage(err, 'Failed to unenroll'));
+              showAlert('Error', getErrorMessage(err, 'Failed to unenroll'));
             }
           },
         },
@@ -89,6 +90,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
         subtitle={[
           subject.code,
           subject.type === 'practical' ? 'Practical' : 'Theory',
+          subject.span,
           subject.faculty?.name,
         ].filter(Boolean).join(' · ')}
       />

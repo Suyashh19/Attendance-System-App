@@ -69,7 +69,7 @@ app/                      # Expo Router screens
 ├── (tabs)/
 │   ├── home.tsx          # Classes
 │   ├── attendance.tsx    # Active session (hidden from the tab bar)
-│   ├── history.tsx       # History (student) or Reports (faculty)
+│   ├── history.tsx       # Attendance (student) or Reports (faculty)
 │   └── profile.tsx
 ├── subject/[id].tsx      # Subject page (faculty and student views)
 └── lecture-detail.tsx    # Faculty roster for one lecture

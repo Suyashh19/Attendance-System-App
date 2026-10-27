@@ -379,7 +379,7 @@ export default function ProfileScreen() {
  </Card>
 
  <Text className="text-center text-light-subtle text-xs font-medium mt-8">
- Attendance System v1.0.0
+ Attendance System v1.2.0
  </Text>
  </View>
 

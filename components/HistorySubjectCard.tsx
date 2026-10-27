@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SubjectHistory } from '../types';
-import { colors, MIN_ATTENDANCE_PERCENT } from '../constants/theme';
+import { colors, classesNeeded } from '../constants/theme';
+import { classesCanMiss, isBelowMinimum } from '../utils/historyView';
 import { Text } from './Text';
 import { Card } from './Card';
 import { ProgressRing } from './ProgressRing';
@@ -50,11 +51,19 @@ export function HistorySubjectCard({ subject }: HistorySubjectCardProps) {
     }
   };
 
-  const percentage = subject.stats.total > 0
-    ? Math.round((subject.stats.PRESENT / subject.stats.total) * 100)
-    : 0;
-  const onTrack = percentage >= MIN_ATTENDANCE_PERCENT;
-  const tone = onTrack ? colors.success : colors.danger;
+  const held = subject.stats.total > 0;
+  const percentage = held ? Math.round((subject.stats.PRESENT / subject.stats.total) * 100) : 0;
+  const below = isBelowMinimum(subject.stats.PRESENT, subject.stats.total);
+  const canMiss = classesCanMiss(subject.stats.PRESENT, subject.stats.total);
+  // No class held yet is neutral, not a failing 0%
+  const tone = !held ? colors.subtle : below ? colors.danger : canMiss === 0 ? colors.warning : colors.success;
+  const guidance = !held
+    ? 'No classes held yet'
+    : below
+      ? `Attend the next ${classesNeeded(subject.stats.PRESENT, subject.stats.total)} to recover`
+      : canMiss === 0
+        ? "Don't miss the next class"
+        : `Can miss ${canMiss} more`;
   const isTheory = subject.type === 'theory';
 
   return (
@@ -68,7 +77,7 @@ export function HistorySubjectCard({ subject }: HistorySubjectCardProps) {
         className="p-4 flex-row items-center"
       >
         <ProgressRing percent={percentage} size={56} strokeWidth={6} color={tone}>
-          <Text className="text-[12px] font-extrabold" style={{ color: tone }}>{percentage}%</Text>
+          <Text className="text-[12px] font-extrabold" style={{ color: tone }}>{held ? `${percentage}%` : '--'}</Text>
         </ProgressRing>
 
         <View className="flex-1 ml-3 mr-2">
@@ -86,7 +95,7 @@ export function HistorySubjectCard({ subject }: HistorySubjectCardProps) {
             </View>
           </View>
           <Text className="text-xs font-bold mt-1.5" style={{ color: tone }}>
-            {percentage}% ATTENDANCE
+            {guidance}
           </Text>
         </View>
 
@@ -111,7 +120,7 @@ export function HistorySubjectCard({ subject }: HistorySubjectCardProps) {
               className={`flex-row items-center justify-between py-3 ${index !== subject.records.length - 1 ? 'border-b border-light-border' : ''}`}
             >
               <View className="flex-row items-center">
-                <View className={`w-2.5 h-2.5 rounded-full mr-3 ${record.status === 'PRESENT' ? 'bg-success' : record.status === 'ABSENT' ? 'bg-danger' : 'bg-warning'}`} />
+                <View className={`w-2.5 h-2.5 rounded-full mr-3 ${record.status === 'PRESENT' ? 'bg-success' : record.status === 'ABSENT' ? 'bg-danger' : record.status === 'EXCUSED' ? 'bg-info' : 'bg-warning'}`} />
                 <View>
                   <Text className="text-light-text font-bold text-sm">{formatDate(record.date)}</Text>
                   <Text className="text-light-muted text-xs font-medium mt-0.5">{formatTime(record.date)}</Text>

@@ -7,6 +7,7 @@ import {
   onSessionEnded,
   onAttendanceResult,
   onAttendanceCount,
+  onLeaveUpdated,
 } from '../services/socket';
 import type { SessionStartedPayload, SessionEndedPayload, AttendanceResultPayload, AttendanceCountPayload } from '../types';
 import { useAuthStore } from '../store/authStore';
@@ -17,6 +18,7 @@ interface UseSocketOptions {
   onSessionEnded?: (data: SessionEndedPayload) => void;
   onAttendanceResult?: (data: AttendanceResultPayload) => void;
   onAttendanceCount?: (data: AttendanceCountPayload) => void;
+  onLeaveUpdated?: () => void;
 }
 
 export function useSocket(options: UseSocketOptions = {}): void {
@@ -39,6 +41,7 @@ export function useSocket(options: UseSocketOptions = {}): void {
       onSessionEnded((data) => optionsRef.current.onSessionEnded?.(data)),
       onAttendanceResult((data) => optionsRef.current.onAttendanceResult?.(data)),
       onAttendanceCount((data) => optionsRef.current.onAttendanceCount?.(data)),
+      onLeaveUpdated(() => optionsRef.current.onLeaveUpdated?.()),
     ];
 
     return () => cleanups.forEach((fn) => fn());

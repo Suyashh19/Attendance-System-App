@@ -13,12 +13,14 @@ import {
   getSubjectSummary,
   deleteSubject,
 } from '../../services/attendance';
+import { approveAllLeaves, getSubjectLeaves, reviewLeave } from '../../services/leaves';
 import { getErrorMessage } from '../../services/api';
 import { deleteWarning, subjectSubtitle } from '../../utils/subjectText';
 import { offerToShareSubject, shareSubjectCode } from '../../utils/shareSubject';
 import { CreateSubjectModal } from '../CreateSubjectModal';
 import { colors, MIN_ATTENDANCE_PERCENT } from '../../constants/theme';
-import type { Subject, EnrolledStudent, StudentAttendanceSummary, SubjectSession } from '../../types';
+import type { Subject, EnrolledStudent, LeaveRequest, StudentAttendanceSummary, SubjectSession } from '../../types';
+import { formatLeaveRange, leaveDays } from '../../utils/leaveForm';
 import { ScreenHeader } from '../ScreenHeader';
 import { Button } from '../Button';
 import { Text } from '../Text';
@@ -28,14 +30,18 @@ import { Chip } from '../Chip';
 import { ProgressRing } from '../ProgressRing';
 import { SegmentedControl } from '../SegmentedControl';
 import { EmptyState, SectionLabel } from '../EmptyState';
+import { ListSkeleton } from '../Skeleton';
+import { StatusPill } from '../StatusPill';
+import { LeaveRejectSheet } from '../LeaveRejectSheet';
 
-type Tab = 'students' | 'requests' | 'lectures';
+type Tab = 'students' | 'requests' | 'leaves' | 'lectures';
 
 type Row =
   | { kind: 'label'; key: string; text: string }
   | { kind: 'student'; key: string; student: EnrolledStudent }
   | { kind: 'request'; key: string; student: EnrolledStudent }
   | { kind: 'removed'; key: string; student: EnrolledStudent }
+  | { kind: 'leave'; key: string; leave: LeaveRequest }
   | { kind: 'lecture'; key: string; session: SubjectSession };
 
 interface FacultySubjectViewProps {
@@ -70,6 +76,15 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     queryFn: () => getSubjectSessions(subjectId),
     enabled: tab === 'lectures',
   });
+
+  // Always loaded, so the tab can show how many leave requests are waiting
+  const leaves = useQuery({
+    queryKey: ['subject-leaves', subjectId],
+    queryFn: () => getSubjectLeaves(subjectId),
+  });
+  const leaveList = leaves.data?.leaves ?? [];
+  const pendingLeaves = useMemo(() => leaveList.filter((l) => l.status === 'PENDING'), [leaveList]);
+  const answeredLeaves = useMemo(() => leaveList.filter((l) => l.status !== 'PENDING'), [leaveList]);
 
   const students = enrollments.data ?? [];
   const approved = useMemo(() => students.filter((s) => s.status === 'APPROVED'), [students]);
@@ -144,6 +159,75 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     );
   };
 
+  // ── Leave requests ──────────────────────────────────────────────────────
+  const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
+
+  const refreshAfterLeave = () => {
+    queryClient.invalidateQueries({ queryKey: ['subject-leaves', subjectId] });
+    queryClient.invalidateQueries({ queryKey: ['subject-analytics', subjectId] });
+    queryClient.invalidateQueries({ queryKey: ['session-details'] });
+  };
+
+  // The request changes status at once; it goes back if the server refuses
+  const { mutate: review } = useMutation({
+    mutationKey: ['review-leave'],
+    mutationFn: ({ id, status, note }: { id: number; status: 'APPROVED' | 'REJECTED'; note?: string }) =>
+      reviewLeave(id, status, note),
+    onMutate: async ({ id, status, note }) => {
+      await queryClient.cancelQueries({ queryKey: ['subject-leaves', subjectId] });
+      const previous = queryClient.getQueryData<{ leaves: LeaveRequest[]; pending: number }>(['subject-leaves', subjectId]);
+      queryClient.setQueryData<{ leaves: LeaveRequest[]; pending: number }>(['subject-leaves', subjectId], (old) => {
+        if (!old) return old;
+        const leaves = old.leaves.map((l) => (l.id === id ? { ...l, status, reviewNote: note || null } : l));
+        return { leaves, pending: leaves.filter((l) => l.status === 'PENDING').length };
+      });
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['subject-leaves', subjectId], context.previous);
+      showAlert('Could not update', getErrorMessage(err, 'Please try again.'));
+    },
+    onSettled: (_data, _err, _vars) => {
+      // Refetch once the last pending change has landed, so an older answer cannot undo a newer tap
+      if (queryClient.isMutating({ mutationKey: ['review-leave'] }) <= 1) refreshAfterLeave();
+    },
+  });
+
+  const { mutate: approveAllLeaveRequests, isPending: isApprovingAllLeaves } = useMutation({
+    mutationFn: () => approveAllLeaves(subjectId),
+    onSuccess: ({ approved, excused }) => {
+      refreshAfterLeave();
+      showAlert(
+        'Approved',
+        `${approved} ${approved === 1 ? 'request was' : 'requests were'} approved.` +
+          (excused > 0 ? ` ${excused} missed ${excused === 1 ? 'class was' : 'classes were'} excused.` : '')
+      );
+    },
+    onError: (err) => showAlert('Could not approve', getErrorMessage(err, 'Please try again.')),
+  });
+
+  const confirmApproveAllLeaves = () => {
+    showAlert(
+      'Approve all leave requests',
+      `Approve all ${pendingLeaves.length} waiting requests for ${subject.name}? Each student's missed classes in those days will be excused.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve all', onPress: () => approveAllLeaveRequests() },
+      ]
+    );
+  };
+
+  const confirmRevoke = (leave: LeaveRequest) => {
+    showAlert(
+      'Take back approval',
+      `${leave.student?.name || 'This student'}'s missed classes in those days will count as absences again.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Take back', style: 'destructive', onPress: () => review({ id: leave.id, status: 'REJECTED' }) },
+      ]
+    );
+  };
+
   const confirmDelete = async () => {
     // Ask the server what a delete would remove, so the warning has real numbers.
     // If that fails the generic warning is shown; the delete itself is never blocked.
@@ -182,6 +266,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
       await Promise.all([
         enrollments.refetch(),
         analytics.refetch(),
+        leaves.refetch(),
         tab === 'lectures' ? sessions.refetch() : null,
       ]);
     } finally {
@@ -214,18 +299,28 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
       return out;
     }
 
+    if (tab === 'leaves') {
+      const out: Row[] = pendingLeaves.map((leave) => ({ kind: 'leave' as const, key: `lr-${leave.id}`, leave }));
+      if (answeredLeaves.length > 0) {
+        out.push({ kind: 'label', key: 'answered-leaves', text: 'ANSWERED' });
+        for (const leave of answeredLeaves) out.push({ kind: 'leave', key: `lr-${leave.id}`, leave });
+      }
+      return out;
+    }
+
     return (sessions.data ?? []).map((session) => ({ kind: 'lecture' as const, key: `l-${session.id}`, session }));
     // percentOf reads summaryByStudent
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, approved, pending, removed, sessions.data, search, onlyLow, summaryByStudent]);
+  }, [tab, approved, pending, removed, sessions.data, search, onlyLow, summaryByStudent, pendingLeaves, answeredLeaves]);
 
   const isLoading =
-    tab === 'lectures' ? sessions.isLoading : enrollments.isLoading;
-  const loadFailed = tab === 'lectures' ? sessions.isError : enrollments.isError;
+    tab === 'lectures' ? sessions.isLoading : tab === 'leaves' ? leaves.isLoading : enrollments.isLoading;
+  const loadFailed = tab === 'lectures' ? sessions.isError : tab === 'leaves' ? leaves.isError : enrollments.isError;
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: 'students', label: 'Students' },
     { key: 'requests', label: 'Requests', badge: pending.length },
+    { key: 'leaves', label: 'Leave', badge: pendingLeaves.length },
     { key: 'lectures', label: 'Lectures' },
   ];
 
@@ -275,7 +370,8 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
             <View className="flex-row mt-3 mb-4">
               <Count label="Present" value={summary?.PRESENT ?? 0} tone="success" />
               <Count label="Absent" value={summary?.ABSENT ?? 0} tone="danger" />
-              <Count label="Invalid" value={summary?.INVALID ?? 0} tone="warning" last />
+              <Count label="Invalid" value={summary?.INVALID ?? 0} tone="warning" last={!summary?.EXCUSED} />
+              {!!summary?.EXCUSED && <Count label="Excused" value={summary.EXCUSED} tone="info" last />}
             </View>
 
             <Button
@@ -328,6 +424,79 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     </Card>
   );
 
+  const renderLeave = (leave: LeaveRequest) => {
+    const days = leaveDays(leave.fromDate, leave.toDate);
+    const waiting = leave.status === 'PENDING';
+    const name = leave.student?.name || 'Unnamed student';
+
+    return (
+      <Card className="mb-3 p-4">
+        <View className="flex-row items-center">
+          <Avatar name={leave.student?.name} size={46} />
+          <View className="flex-1 mx-3">
+            <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>{name}</Text>
+            <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>
+              {leave.student?.prn ? `PRN ${leave.student.prn}` : 'No PRN yet'}
+              {leave.student?.rollNo ? ` · Roll ${leave.student.rollNo}` : ''}
+            </Text>
+          </View>
+          {!waiting && (
+            <StatusPill status={leave.status} label={leave.status === 'APPROVED' ? 'APPROVED' : 'NOT APPROVED'} />
+          )}
+        </View>
+
+        <View className="flex-row items-center mt-3">
+          <Ionicons name="calendar-outline" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text className="text-light-text text-sm font-semibold">
+            {formatLeaveRange(leave.fromDate, leave.toDate)}
+            <Text className="text-light-muted font-medium"> · {days} {days === 1 ? 'day' : 'days'}</Text>
+          </Text>
+        </View>
+        <Text className="text-light-muted text-sm font-medium mt-2">{leave.reason}</Text>
+
+        {leave.reviewNote ? (
+          <Text className="text-light-subtle text-xs font-medium mt-2">Your note: {leave.reviewNote}</Text>
+        ) : null}
+
+        {waiting ? (
+          <View className="flex-row mt-4">
+            <Button
+              title="Reject"
+              variant="dangerSoft"
+              size="sm"
+              icon="close"
+              onPress={() => setRejecting(leave)}
+              className="flex-1 mr-3"
+            />
+            <Button
+              title="Approve"
+              size="sm"
+              icon="checkmark"
+              onPress={() => review({ id: leave.id, status: 'APPROVED' })}
+              className="flex-1"
+            />
+          </View>
+        ) : leave.status === 'APPROVED' ? (
+          <Button
+            title="Take back approval"
+            variant="ghost"
+            size="sm"
+            onPress={() => confirmRevoke(leave)}
+            className="mt-2 self-start"
+          />
+        ) : (
+          <Button
+            title="Approve instead"
+            variant="ghost"
+            size="sm"
+            onPress={() => review({ id: leave.id, status: 'APPROVED' })}
+            className="mt-2 self-start"
+          />
+        )}
+      </Card>
+    );
+  };
+
   const renderLecture = (session: SubjectSession) => {
     const start = new Date(session.startTime);
     return (
@@ -369,7 +538,9 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         : `No students yet. Share the code ${subject.code} so they can enroll, then approve them under Requests.`
       : tab === 'requests'
         ? 'No requests waiting for you.'
-        : 'No lectures yet. Start attendance from the Classes tab.';
+        : tab === 'leaves'
+          ? 'No leave requests. When a student applies, it appears here.'
+          : 'No lectures yet. Start attendance from the Classes tab.';
 
   return (
     <View className="flex-1 bg-light">
@@ -423,6 +594,16 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
               />
             )}
 
+            {tab === 'leaves' && pendingLeaves.length > 1 && (
+              <Button
+                title={`Approve all (${pendingLeaves.length})`}
+                icon="checkmark-done-outline"
+                onPress={confirmApproveAllLeaves}
+                loading={isApprovingAllLeaves}
+                className="mb-4"
+              />
+            )}
+
             {tab === 'students' && approved.length > 0 && (
               <View className="mb-4">
                 <View className="flex-row items-center bg-light-card border border-light-border rounded-2xl px-4 h-[52px] mb-3">
@@ -457,10 +638,10 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         }
         ListEmptyComponent={
           isLoading ? (
-            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 32 }} />
+            <ListSkeleton count={3} className="pt-2" />
           ) : (
             <EmptyState
-              icon={loadFailed ? 'cloud-offline-outline' : tab === 'lectures' ? 'calendar-outline' : 'people-outline'}
+              icon={loadFailed ? 'cloud-offline-outline' : tab === 'lectures' || tab === 'leaves' ? 'calendar-outline' : 'people-outline'}
               tone={loadFailed ? 'danger' : 'primary'}
               text={loadFailed ? 'Could not load this. Pull down to try again.' : emptyText}
             />
@@ -476,9 +657,21 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
               return renderRequest(item.student, false);
             case 'removed':
               return renderRequest(item.student, true);
+            case 'leave':
+              return renderLeave(item.leave);
             case 'lecture':
               return renderLecture(item.session);
           }
+        }}
+      />
+
+      <LeaveRejectSheet
+        visible={!!rejecting}
+        studentName={rejecting?.student?.name || 'The student'}
+        onClose={() => setRejecting(null)}
+        onConfirm={(note) => {
+          if (rejecting) review({ id: rejecting.id, status: 'REJECTED', note });
+          setRejecting(null);
         }}
       />
 
@@ -556,11 +749,12 @@ function Detail({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; 
   );
 }
 
-function Count({ label, value, tone, last }: { label: string; value: number; tone: 'success' | 'danger' | 'warning'; last?: boolean }) {
+function Count({ label, value, tone, last }: { label: string; value: number; tone: 'success' | 'danger' | 'warning' | 'info'; last?: boolean }) {
   const styles = {
     success: { bg: 'bg-success-bg', text: 'text-success' },
     danger: { bg: 'bg-danger-bg', text: 'text-danger' },
     warning: { bg: 'bg-warning-bg', text: 'text-warning' },
+    info: { bg: 'bg-info-bg', text: 'text-info' },
   }[tone];
   return (
     <View className={`flex-1 rounded-2xl p-3 items-center ${styles.bg} ${last ? '' : 'mr-2'}`}>

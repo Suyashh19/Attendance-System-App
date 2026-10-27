@@ -1,11 +1,12 @@
-import { Tabs, useRouter, usePathname } from 'expo-router';
+import { Tabs } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore } from '../../store/authStore';
+import { useSocket } from '../../hooks/useSocket';
 import { Text } from '../../components/Text';
 import { colors, shadow } from '../../constants/theme';
 
@@ -61,90 +62,66 @@ function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
   const user = useAuthStore(s => s.user);
   const isFaculty = user?.role === 'faculty';
+  const queryClient = useQueryClient();
 
-  // Define tab order for gesture navigation
-  const tabs = ['/home', '/history', '/profile'];
-  const currentIndex = tabs.findIndex(tab => pathname.includes(tab));
-
-  const navigateToTab = (index: number) => {
-    if (index >= 0 && index < tabs.length) {
-      router.push(`/(tabs)${tabs[index]}` as any);
-    }
-  };
-
-  const panGesture = Gesture.Pan()
-    // Off on the attendance code screen, where a stray swipe would throw the student out mid-session
-    .enabled(currentIndex !== -1)
-    .activeOffsetX([-20, 20]) // Avoid vertical scroll interference
-    .onEnd((event) => {
-      const { velocityX, translationX } = event;
-      const swipeThreshold = 50;
-      const velocityThreshold = 500;
-
-      if (Math.abs(velocityX) > velocityThreshold || Math.abs(translationX) > swipeThreshold) {
-        if (translationX > 0 && currentIndex > 0) {
-          // Swipe Right (Finger moves right) -> Go Left (Previous Tab)
-          runOnJS(navigateToTab)(currentIndex - 1);
-        } else if (translationX < 0 && currentIndex < tabs.length - 1) {
-          // Swipe Left (Finger moves left) -> Go Right (Next Tab)
-          runOnJS(navigateToTab)(currentIndex + 1);
-        }
-      }
-    });
+  // A leave request was sent or answered: refresh the lists, and the attendance an approval changed
+  useSocket({
+    onLeaveUpdated: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['subject-leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['history'] });
+    },
+  });
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <GestureDetector gesture={panGesture}>
-        <View style={{ flex: 1, backgroundColor: colors.bg }}>
-          <Tabs
-            tabBar={(props) => <TabBar {...props} />}
-            // Every screen draws its own gradient header
-            screenOptions={{ headerShown: false }}
-          >
-            <Tabs.Screen
-              name="home"
-              options={{
-                title: 'Classes',
-                tabBarIcon: ({ color, focused, size }) => <Ionicons name={focused ? 'library' : 'library-outline'} size={size} color={color} />,
-              }}
-            />
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <Tabs
+          tabBar={(props) => <TabBar {...props} />}
+          // Every screen draws its own gradient header
+          screenOptions={{ headerShown: false }}
+        >
+          <Tabs.Screen
+            name="home"
+            options={{
+              title: 'Classes',
+              tabBarIcon: ({ color, focused, size }) => <Ionicons name={focused ? 'library' : 'library-outline'} size={size} color={color} />,
+            }}
+          />
 
-            <Tabs.Screen
-              name="attendance"
-              options={{
-                href: null,
-                title: 'Active Session',
-              }}
-            />
+          <Tabs.Screen
+            name="attendance"
+            options={{
+              href: null,
+              title: 'Active Session',
+            }}
+          />
 
-            <Tabs.Screen
-              name="history"
-              options={{
-                title: isFaculty ? 'Reports' : 'History',
-                tabBarIcon: ({ color, focused, size }) => (
-                  <Ionicons
-                    name={isFaculty ? (focused ? 'bar-chart' : 'bar-chart-outline') : (focused ? 'time' : 'time-outline')}
-                    size={size}
-                    color={color}
-                  />
-                ),
-              }}
-            />
+          <Tabs.Screen
+            name="history"
+            options={{
+              title: isFaculty ? 'Reports' : 'Attendance',
+              tabBarIcon: ({ color, focused, size }) => (
+                <Ionicons
+                  name={isFaculty ? (focused ? 'bar-chart' : 'bar-chart-outline') : (focused ? 'calendar' : 'calendar-outline')}
+                  size={size}
+                  color={color}
+                />
+              ),
+            }}
+          />
 
-            <Tabs.Screen
-              name="profile"
-              options={{
-                title: 'Profile',
-                tabBarIcon: ({ color, focused, size }) => <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />,
-              }}
-            />
-          </Tabs>
-        </View>
-      </GestureDetector>
+          <Tabs.Screen
+            name="profile"
+            options={{
+              title: 'Profile',
+              tabBarIcon: ({ color, focused, size }) => <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />,
+            }}
+          />
+        </Tabs>
+      </View>
     </GestureHandlerRootView>
   );
 }

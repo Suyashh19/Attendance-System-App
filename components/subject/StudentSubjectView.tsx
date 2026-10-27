@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, FlatList, RefreshControl } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { Text } from '../Text';
 import { Card } from '../Card';
 import { ProgressRing } from '../ProgressRing';
 import { SectionLabel } from '../EmptyState';
+import { ListSkeleton } from '../Skeleton';
 
 interface StudentSubjectViewProps {
   subject: Subject;
@@ -185,7 +186,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
           )
         }
         ListEmptyComponent={
-          approved && isLoading ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} /> : null
+          approved && isLoading ? <ListSkeleton count={3} className="pt-2" /> : null
         }
         renderItem={({ item }) => {
           const rowTone = statusTone(item.status);

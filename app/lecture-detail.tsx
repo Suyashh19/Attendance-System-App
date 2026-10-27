@@ -1,12 +1,14 @@
-import React from 'react';
-import { View, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, FlatList, TouchableOpacity } from 'react-native';
 import { showAlert } from '../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSessionDetails, editAttendanceRecord } from '../services/attendance';
+import type { SessionDetailsResponse } from '../types';
 import { colors, MIN_ATTENDANCE_PERCENT } from '../constants/theme';
 import { StatusPill } from '../components/StatusPill';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ListSkeleton } from '../components/Skeleton';
 import { Text } from '../components/Text';
 import { Card } from '../components/Card';
 import { Avatar } from '../components/Avatar';
@@ -26,17 +28,52 @@ export default function LectureDetailScreen() {
     enabled: !!sessionId,
   });
 
+  // Students whose change is still on its way to the server; their button waits so taps cannot overlap
+  const [saving, setSaving] = useState<Set<number>>(new Set());
+  const setSavingFor = (studentId: number, on: boolean) =>
+    setSaving((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(studentId);
+      else next.delete(studentId);
+      return next;
+    });
+
+  const detailsKey = ['session-details', sessionId];
+
+  // The new status shows at once; the server catches up in the background and the old one returns if it refuses
   const editMutation = useMutation({
+    mutationKey: ['edit-attendance'],
     mutationFn: ({ studentId, status }: { studentId: number, status: string }) =>
       editAttendanceRecord(sessionId, studentId, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session-details', sessionId] });
+    onMutate: async ({ studentId, status }) => {
+      setSavingFor(studentId, true);
+      await queryClient.cancelQueries({ queryKey: detailsKey });
+      const previous = queryClient.getQueryData<SessionDetailsResponse>(detailsKey);
+      queryClient.setQueryData<SessionDetailsResponse>(detailsKey, (old) =>
+        old
+          ? {
+              ...old,
+              students: old.students.map((st) =>
+                st.id === studentId ? { ...st, status: status as typeof st.status, editedByFaculty: true, reason: null } : st
+              ),
+            }
+          : old
+      );
+      return { previous };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(detailsKey, context.previous);
+      showAlert('Error', err.response?.data?.error || 'Failed to update attendance');
+    },
+    onSettled: (_data, _err, { studentId }) => {
+      setSavingFor(studentId, false);
+      // Refetch once the last pending change has landed, so an older answer cannot undo a newer tap
+      if (queryClient.isMutating({ mutationKey: ['edit-attendance'] }) <= 1) {
+        queryClient.invalidateQueries({ queryKey: detailsKey });
+      }
       queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['subject-analytics'] });
     },
-    onError: (err: any) => {
-      showAlert('Error', err.response?.data?.error || 'Failed to update attendance');
-    }
   });
 
   const toggleStatus = (studentId: number, currentStatus: string) => {
@@ -46,8 +83,9 @@ export default function LectureDetailScreen() {
 
   if (isLoading) {
     return (
-      <View className="flex-1 bg-light items-center justify-center">
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View className="flex-1 bg-light">
+        <ScreenHeader title="Lecture" />
+        <ListSkeleton />
       </View>
     );
   }
@@ -127,11 +165,10 @@ export default function LectureDetailScreen() {
 
             <TouchableOpacity
               onPress={() => toggleStatus(item.id, item.status)}
-              disabled={editMutation.isPending}
+              disabled={saving.has(item.id)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel={`${item.name} is ${item.status}. Tap to change.`}
-              style={{ opacity: editMutation.isPending ? 0.6 : 1 }}
             >
               <StatusPill status={item.status} edited={item.editedByFaculty} />
             </TouchableOpacity>

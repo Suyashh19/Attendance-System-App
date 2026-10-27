@@ -84,7 +84,7 @@ export interface SubmitAttendancePayload {
 }
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED' | 'EXCUSED';
 
 export interface AttendanceResult {
   status: AttendanceStatus | 'WRONG_CODE'; // WRONG_CODE = typo, attempts still left
@@ -154,7 +154,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface HistoryRecord {
   id: number;
-  status: 'PRESENT' | 'ABSENT' | 'INVALID';
+  status: 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXCUSED';
   date: string;
   reason?: string;
   submittedAt?: string;
@@ -170,6 +170,8 @@ export interface SubjectHistory {
     PRESENT: number;
     ABSENT: number;
     INVALID: number;
+    /** Classes excused by approved leave. They are left out of `total`. */
+    EXCUSED?: number;
     total: number;
   };
 }
@@ -192,7 +194,7 @@ export interface SessionStudentAttendance {
   name: string;
   prn: string | null;
   rollNo: string | null;
-  status: 'PRESENT' | 'ABSENT' | 'INVALID';
+  status: 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXCUSED';
   reason: string | null;
   editedByFaculty: boolean;
 }
@@ -223,6 +225,7 @@ export interface StudentAttendanceSummary {
   PRESENT: number;
   ABSENT: number;
   INVALID: number;
+  EXCUSED?: number;
   totalSessions: number;
   attendancePercentage: string;
 }
@@ -238,4 +241,25 @@ export interface SubjectSession {
   isActive: boolean;
   startTime: string;
   endTime: string | null;
+}
+
+// ─── Leave ────────────────────────────────────────────────────────────────────
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface LeaveRequest {
+  id: number;
+  studentId: number;
+  subjectId: number;
+  /** First and last day of the leave, "YYYY-MM-DD" */
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: LeaveStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  /** Student's own list: which subject */
+  subject?: { id: number; name: string; code: string; type: 'theory' | 'practical' };
+  /** Faculty's list: who asked */
+  student?: { id: number; name: string | null; rollNo: string | null; prn: string | null };
 }

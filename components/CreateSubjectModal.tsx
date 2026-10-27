@@ -1,13 +1,22 @@
 import React, { useEffect, useState, memo } from 'react';
-import { View } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { showAlert } from '../store/dialogStore';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Text } from './Text';
 import { BottomSheet } from './BottomSheet';
 import { SegmentedControl } from './SegmentedControl';
+import { Chip } from './Chip';
 import { createSubject, updateSubject } from '../services/attendance';
 import { getErrorMessage } from '../services/api';
+import {
+  academicYearOptions,
+  currentAcademicYear,
+  currentTerm,
+  formatSpan,
+  parseSpan,
+  type Term,
+} from '../utils/academicYear';
 import type { Subject } from '../types';
 
 type SubjectType = 'theory' | 'practical';
@@ -28,22 +37,38 @@ const TYPES = [
   { key: 'practical' as const, label: 'Practical', icon: 'flask-outline' as const },
 ];
 
-const MAX_SPAN_LENGTH = 40;
+const TERM_OPTIONS = [
+  { key: 'Odd' as const, label: 'Odd semester' },
+  { key: 'Even' as const, label: 'Even semester' },
+];
+
+/** Year + term from a saved label. An old free-text label gives no year, so the faculty picks one. */
+function splitSpan(span?: string | null): { year: string; term: Term } {
+  const parsed = parseSpan(span);
+  return { year: parsed?.year ?? '', term: parsed?.term ?? currentTerm() };
+}
 
 function initialValues(subject?: Subject, prefill?: CreateSubjectModalProps['prefill']) {
   if (subject) {
-    return { name: subject.name, code: subject.code, type: subject.type, span: subject.span ?? '' };
+    return { name: subject.name, code: subject.code, type: subject.type, ...splitSpan(subject.span) };
   }
   if (prefill) {
-    return { name: prefill.name, code: '', type: prefill.type, span: prefill.span ?? '' };
+    return { name: prefill.name, code: '', type: prefill.type, ...splitSpan(prefill.span) };
   }
-  return { name: '', code: '', type: 'theory' as SubjectType, span: '' };
+  // A new subject starts on the running academic year and term
+  return { name: '', code: '', type: 'theory' as SubjectType, year: currentAcademicYear(), term: currentTerm() };
 }
 
 export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, prefill }: CreateSubjectModalProps) => {
   const editing = !!subject;
   const [values, setValues] = useState(() => initialValues(subject, prefill));
   const [loading, setLoading] = useState(false);
+
+  // The saved year is always offered, even when it has fallen out of the usual range
+  const yearOptions = React.useMemo(() => {
+    const options = academicYearOptions();
+    return values.year && !options.includes(values.year) ? [...options, values.year] : options;
+  }, [values.year]);
 
   // Each time the sheet opens it starts from the subject being edited, the duplicate, or blank
   useEffect(() => {
@@ -54,12 +79,13 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
   const handleSave = async () => {
     const name = values.name.trim();
     const code = values.code.trim();
-    const span = values.span.trim();
 
     if (!name || !code) {
       showAlert('Missing details', 'Enter both a subject name and a subject code.');
       return;
     }
+
+    const span = values.year ? formatSpan(values.year, values.term) : '';
 
     try {
       setLoading(true);
@@ -71,7 +97,9 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
         if (name !== subject.name) changes.name = name;
         if (code.toUpperCase() !== subject.code) changes.code = code;
         if (values.type !== subject.type) changes.type = values.type;
-        if (span !== (subject.span ?? '')) changes.span = span;
+        // An old free-text label stays as it is until a year is picked to replace it
+        const keepsOldLabel = !!subject.span && !parseSpan(subject.span) && !values.year;
+        if (!keepsOldLabel && span !== (subject.span ?? '')) changes.span = span;
 
         if (Object.keys(changes).length === 0) {
           onClose();
@@ -97,7 +125,7 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
   const subtitle = editing
     ? 'Students already in the class stay enrolled.'
     : prefill
-      ? 'Give the copy a new code and semester. It starts with no students.'
+      ? 'Give the copy a new code and check its academic year. It starts with no students.'
       : 'Students enroll with the subject code you set here.';
 
   return (
@@ -118,14 +146,32 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
         autoCapitalize="characters"
         autoCorrect={false}
       />
-      <Input
-        label="Semester or academic year (optional)"
-        placeholder="e.g. Sem 5 or 2026-27"
-        icon="calendar-outline"
-        value={values.span}
-        onChangeText={(t) => setValues({ ...values, span: t.slice(0, MAX_SPAN_LENGTH) })}
-        maxLength={MAX_SPAN_LENGTH}
-      />
+      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year (optional)</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
+        {yearOptions.map((year) => (
+          <Chip
+            key={year}
+            label={year === currentAcademicYear() ? `${year} · Current` : year}
+            selected={values.year === year}
+            // Tapping the chosen year again clears it
+            onPress={() => setValues({ ...values, year: values.year === year ? '' : year })}
+            className="mr-2"
+          />
+        ))}
+      </ScrollView>
+      {values.year ? (
+        <SegmentedControl
+          options={TERM_OPTIONS}
+          value={values.term}
+          onChange={(term) => setValues({ ...values, term })}
+          className="mb-4"
+        />
+      ) : null}
+      {subject?.span && !parseSpan(subject.span) && !values.year && (
+        <Text className="text-light-muted text-xs font-medium -mt-1 mb-4 ml-1">
+          Current label: {subject.span}. Pick an academic year to replace it.
+        </Text>
+      )}
       {editing && values.code.trim().toUpperCase() !== subject!.code && (
         <Text className="text-light-muted text-xs font-medium -mt-2 mb-4 ml-1">
           Students who join later must use the new code. Share it with them.

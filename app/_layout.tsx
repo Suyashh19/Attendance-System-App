@@ -75,6 +75,7 @@ function RootLayoutNav() {
  <Stack.Screen name="index" options={{ headerShown: false }} />
  <Stack.Screen name="subject/[id]" options={{ animation: 'slide_from_right' }} />
  <Stack.Screen name="lecture-detail" options={{ animation: 'slide_from_right' }} />
+ <Stack.Screen name="leave" options={{ animation: 'slide_from_right' }} />
  </Stack>
  </ThemeProvider>
  );

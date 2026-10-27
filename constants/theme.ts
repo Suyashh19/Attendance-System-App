@@ -44,7 +44,7 @@ export function initials(name?: string | null) {
 // Students need this share of classes to stay eligible
 export const MIN_ATTENDANCE_PERCENT = 75;
 
-type StatusTone = { text: string; bg: string; icon: 'checkmark-circle' | 'close-circle' | 'warning' | 'time' };
+type StatusTone = { text: string; bg: string; icon: 'checkmark-circle' | 'close-circle' | 'warning' | 'time' | 'calendar' };
 
 /** Colours and icon for an attendance or enrollment status. */
 export function statusTone(status: string): StatusTone {
@@ -57,6 +57,10 @@ export function statusTone(status: string): StatusTone {
       return { text: colors.danger, bg: colors.dangerBg, icon: 'close-circle' };
     case 'PENDING':
       return { text: colors.warning, bg: colors.warningBg, icon: 'time' };
+    case 'EXCUSED':
+      return { text: colors.info, bg: colors.infoBg, icon: 'calendar' };
+    case 'CANCELLED':
+      return { text: colors.muted, bg: colors.border, icon: 'close-circle' };
     default:
       return { text: colors.warning, bg: colors.warningBg, icon: 'warning' };
   }

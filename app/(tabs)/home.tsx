@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState, ScrollView } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -15,6 +15,9 @@ import {
 import { CreateSubjectModal } from '../../components/CreateSubjectModal';
 import { EnrollModal } from '../../components/EnrollModal';
 import { SubjectCard } from '../../components/SubjectCard';
+import { AcademicYearCard } from '../../components/AcademicYearCard';
+import { TabSkeleton } from '../../components/Skeleton';
+import { SegmentedControl } from '../../components/SegmentedControl';
 import { FacultySessionModal } from '../../components/FacultySessionModal';
 import { AttendanceSummaryModal } from '../../components/AttendanceSummaryModal';
 import { useSocket } from '../../hooks/useSocket';
@@ -26,11 +29,31 @@ import { getErrorMessage } from '../../services/api';
 import { colors } from '../../constants/theme';
 import { Text } from '../../components/Text';
 import { Hero } from '../../components/Hero';
-import { Avatar } from '../../components/Avatar';
-import { Chip } from '../../components/Chip';
+import { ClassFilterSheet } from '../../components/ClassFilterSheet';
+import { SearchFilterBar } from '../../components/SearchFilterBar';
 import { EmptyState, SectionLabel } from '../../components/EmptyState';
-import { filterSubjects, distinctSpans } from '../../utils/subjectFilter';
 import { offerToShareSubject } from '../../utils/shareSubject';
+import {
+  NO_FILTERS,
+  activeFilterCount,
+  applyClassFilters,
+  buildClassList,
+  defaultFilters,
+  filterSummary,
+  filtersShowing,
+  yearChoices,
+  type ClassEntry,
+  type ClassFilters,
+} from '../../utils/classesView';
+import {
+  currentAcademicYear,
+  currentTerm,
+  groupByAcademicYear,
+  subjectsInTerm,
+  termsPresent,
+  OTHER_YEAR,
+  type Term,
+} from '../../utils/academicYear';
 
 export default function HomeScreen() {
  const router = useRouter();
@@ -50,8 +73,13 @@ export default function HomeScreen() {
  const [showCreateModal, setShowCreateModal] = useState(false);
  const [showEnrollModal, setShowEnrollModal] = useState(false);
 
- const [selectedCategory, setSelectedCategory] = useState<'theory' | 'practical' | null>(null);
- const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
+ // Faculty: null = not touched yet, so the list opens on the running academic year and term
+ const [chosenFilters, setChosenFilters] = useState<ClassFilters | null>(null);
+ const [search, setSearch] = useState('');
+ const [showFilters, setShowFilters] = useState(false);
+ // Student: the academic year (and the term inside it) being browsed. No year = the list of years.
+ const [openYear, setOpenYear] = useState<string | null>(null);
+ const [pickedTerm, setPickedTerm] = useState<Term | null | undefined>(undefined);
  const [isActionLoading, setIsActionLoading] = useState(false);
  const [liveCount, setLiveCount] = useState<{ sessionId: number, presentCount: number } | null>(null);
  
@@ -98,12 +126,32 @@ export default function HomeScreen() {
  }
  };
 
- // Filter subjects based on selection
- const spans = distinctSpans(subjects);
- // A chosen semester that no longer exists (renamed or removed) must not leave the list empty
- const activeSpan = selectedSpan && spans.includes(selectedSpan) ? selectedSpan : null;
+ // Faculty filters. A chosen year or term that no longer matches anything simply shows an empty state with Clear.
+ const filters = chosenFilters ?? defaultFilters(subjects);
+ const filterCount = activeFilterCount(filters);
+
+ // Student: subjects grouped by academic year. A single year opens straight away, with no card to tap.
+ const yearGroups = React.useMemo(() => groupByAcademicYear(subjects), [subjects]);
+ const studentYear = user?.role === 'student'
+ ? yearGroups.find((g) => g.key === openYear) ?? (yearGroups.length === 1 ? yearGroups[0] : null)
+ : null;
+ const termsHere = studentYear ? termsPresent(studentYear) : [];
+ // The term shown: the one picked, else the running term if it has subjects, else the first that does
+ const activeTerm: Term | null = !studentYear
+ ? null
+ : pickedTerm !== undefined && termsHere.includes(pickedTerm)
+ ? pickedTerm
+ : termsHere.includes(currentTerm())
+ ? currentTerm()
+ : termsHere[0] ?? null;
+ const showYearCards = user?.role === 'student' && subjects.length > 0 && !studentYear;
+
  const filteredSubjects = user?.role === 'faculty'
- ? filterSubjects(subjects, selectedCategory, '', activeSpan)
+ ? applyClassFilters(subjects, filters, search)
+ : showYearCards
+ ? []
+ : studentYear
+ ? subjectsInTerm(studentYear.subjects, activeTerm)
  : subjects;
 
  // ─── Socket.IO Real-time Events ─────────────────────────────────────────────
@@ -342,9 +390,9 @@ export default function HomeScreen() {
 
  const handleCreateSuccess = React.useCallback((type: 'theory' | 'practical', created: Subject) => {
  setShowCreateModal(false);
- // Show the new subject: switch to its type and clear a semester filter that would hide it
- setSelectedCategory(type);
- setSelectedSpan(null);
+ // Show the new subject: filter to its year and term, and drop a search that would hide it
+ setChosenFilters(filtersShowing(created.span));
+ setSearch('');
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
  offerToShareSubject(created);
  }, [queryClient]);
@@ -356,13 +404,7 @@ export default function HomeScreen() {
  }, [queryClient]);
 
  // ─── Renderers ──────────────────────────────────────────────────────────────
- if (isLoading) {
- return (
- <View className="flex-1 bg-light items-center justify-center">
- <ActivityIndicator size="large" color={colors.primary} />
- </View>
- );
- }
+ if (isLoading) return <TabSkeleton />;
 
  if (isError) {
  return (
@@ -377,6 +419,11 @@ export default function HomeScreen() {
  </View>
  );
  }
+
+ // Faculty see group headers (and the live subject first); students get their subjects as they are
+ const listEntries: ClassEntry<Subject>[] = isFaculty
+ ? buildClassList(filteredSubjects, liveSubjectId)
+ : filteredSubjects.map((subject) => ({ kind: 'subject', subject }));
 
  const openAddModal = () => (isFaculty ? setShowCreateModal(true) : setShowEnrollModal(true));
  const firstName = user?.name?.split(' ')[0] || 'there';
@@ -406,8 +453,8 @@ export default function HomeScreen() {
  return (
  <View className="flex-1 bg-light">
  <FlatList
- data={filteredSubjects}
- keyExtractor={(item) => String(item.id)}
+ data={listEntries}
+ keyExtractor={(entry) => (entry.kind === 'header' ? `header-${entry.key}` : String(entry.subject.id))}
  contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
  showsVerticalScrollIndicator={false}
  refreshControl={
@@ -423,7 +470,9 @@ export default function HomeScreen() {
  <View className="mb-3">
  <Hero className="px-5 pb-6" style={{ paddingTop: insets.top + 16 }}>
  <View className="flex-row items-center">
- <Avatar name={user?.name} size={48} tone="onDark" />
+ <View className="w-12 h-12 rounded-full bg-white/15 border border-white/10 items-center justify-center">
+ <Ionicons name={isFaculty ? 'easel' : 'school'} size={22} color={colors.white} />
+ </View>
  <View className="flex-1 mx-3">
  <Text className="text-white text-[22px] font-extrabold" numberOfLines={1}>Hello, {firstName}</Text>
  </View>
@@ -471,42 +520,110 @@ export default function HomeScreen() {
  </Hero>
 
  {isFaculty && subjects.length > 0 && (
- <View className="flex-row px-4 mt-4">
- {categories.map(({ key, label, count }) => (
- <Chip
- key={label}
- label={`${label} · ${count}`}
- selected={selectedCategory === key}
- onPress={() => setSelectedCategory(key)}
- className="mr-2"
+ <View className="px-4 mt-4">
+ <SearchFilterBar
+ value={search}
+ onChangeText={setSearch}
+ placeholder="Search by name or code"
+ filterCount={filterCount}
+ onOpenFilters={() => setShowFilters(true)}
+ summary={filterSummary(filteredSubjects.length, filters)}
+ onShowAll={() => { setChosenFilters(NO_FILTERS); setSearch(''); }}
  />
- ))}
  </View>
  )}
 
- {isFaculty && spans.length > 0 && (
- <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ paddingHorizontal: 16 }}>
- <Chip label="All semesters" selected={activeSpan === null} onPress={() => setSelectedSpan(null)} className="mr-2" />
- {spans.map((span) => (
- <Chip key={span} label={span} selected={activeSpan === span} onPress={() => setSelectedSpan(span)} className="mr-2" />
- ))}
- </ScrollView>
+ {showYearCards && (
+ <View className="px-4">
+ <SectionLabel className="px-1 mt-5 mb-3">ACADEMIC YEARS</SectionLabel>
+ {yearGroups.map((group) => {
+ const approved = group.subjects.filter((s) => !s.enrollmentStatus || s.enrollmentStatus === 'APPROVED');
+ const totals = approved.reduce(
+ (sum, s) => {
+ const a = attendanceBySubject.get(s.id);
+ return { present: sum.present + (a?.present ?? 0), total: sum.total + (a?.total ?? 0) };
+ },
+ { present: 0, total: 0 }
+ );
+ return (
+ <AcademicYearCard
+ key={group.key}
+ label={group.label}
+ subjectCount={group.subjects.length}
+ odd={group.counts.Odd}
+ even={group.counts.Even}
+ attendance={history ? totals : undefined}
+ isCurrent={group.key === currentAcademicYear()}
+ onPress={() => { setOpenYear(group.key); setPickedTerm(undefined); }}
+ />
+ );
+ })}
+ </View>
  )}
 
- {filteredSubjects.length > 0 && (
- <SectionLabel className="px-5 mt-5">
- {isFaculty ? 'YOUR SUBJECTS' : 'YOUR CLASSES'}
- </SectionLabel>
+ {studentYear && (yearGroups.length > 1 || studentYear.key !== OTHER_YEAR) && (
+ <View className="px-4 mt-4">
+ {yearGroups.length > 1 && (
+ <TouchableOpacity
+ onPress={() => setOpenYear(null)}
+ activeOpacity={0.7}
+ accessibilityRole="button"
+ accessibilityLabel="Back to all academic years"
+ className="flex-row items-center self-start mb-2 -ml-1 pr-3 h-9"
+ >
+ <Ionicons name="chevron-back" size={18} color={colors.primary} />
+ <Text className="text-primary font-bold text-sm">All years</Text>
+ </TouchableOpacity>
+ )}
+ <Text className="text-light-text text-xl font-extrabold mb-3">
+ {studentYear.key === OTHER_YEAR ? 'Other classes' : studentYear.label}
+ </Text>
+ {termsHere.length > 1 && (
+ <SegmentedControl
+ options={termsHere.map((t) => ({
+ key: t ?? 'none',
+ label: t ? `${t} semester` : 'No semester',
+ }))}
+ value={activeTerm ?? 'none'}
+ onChange={(key) => setPickedTerm(key === 'none' ? null : (key as Term))}
+ />
+ )}
+ </View>
+ )}
+
+ {!isFaculty && filteredSubjects.length > 0 && (
+ <SectionLabel className="px-5 mt-5">YOUR CLASSES</SectionLabel>
  )}
  </View>
  }
  ListEmptyComponent={
+ showYearCards ? null :
+ isFaculty && subjects.length > 0 ? (
+ <View className="px-4">
+ <EmptyState
+ icon="search-outline"
+ title="No subjects match"
+ text={search ? `Nothing found for "${search.trim()}" with these filters.` : 'No subjects fit the filters you picked.'}
+ action={
+ <Button
+ title="Clear filters"
+ variant="outline"
+ icon="close"
+ onPress={() => { setChosenFilters(NO_FILTERS); setSearch(''); }}
+ />
+ }
+ />
+ </View>
+ ) :
+ studentYear ? (
+ <View className="px-4">
+ <EmptyState icon="book-outline" text={`No ${activeTerm ? activeTerm + ' semester ' : ''}classes in this year yet.`} />
+ </View>
+ ) :
  <View className="flex-1 justify-center px-4">
  <EmptyState
  icon={isFaculty ? 'school-outline' : 'book-outline'}
- title={isFaculty
- ? (selectedCategory ? `No ${selectedCategory} subjects yet` : 'No subjects yet')
- : 'No classes yet'}
+ title={isFaculty ? 'No subjects yet' : 'No classes yet'}
  text={isFaculty
  ? 'Create a subject, then share its code with your students so they can enroll.'
  : 'Enter the subject code from your faculty to start tracking your attendance.'}
@@ -520,20 +637,33 @@ export default function HomeScreen() {
  />
  </View>
  }
- renderItem={({ item }) => (
+ renderItem={({ item: entry }) => entry.kind === 'header' ? (
+ <SectionLabel className="px-5 mt-4 mb-3">
+ {entry.label.toUpperCase()} · {entry.count}
+ </SectionLabel>
+ ) : (
  <View className="px-4">
  <SubjectCard
- subject={item}
- sessionActive={liveSubjectId === item.id}
- attendance={isStudent && history ? attendanceBySubject.get(item.id) ?? { present: 0, total: 0 } : undefined}
- onPress={() => router.push(`/subject/${item.id}` as any)}
- onStartSession={() => handleStartSessionPress(item)}
+ subject={entry.subject}
+ sessionActive={liveSubjectId === entry.subject.id}
+ attendance={isStudent && history ? attendanceBySubject.get(entry.subject.id) ?? { present: 0, total: 0 } : undefined}
+ onPress={() => router.push(`/subject/${entry.subject.id}` as any)}
+ onStartSession={() => handleStartSessionPress(entry.subject)}
  />
  </View>
  )}
  />
 
  {/* Modals */}
+ <ClassFilterSheet
+ visible={showFilters}
+ onClose={() => setShowFilters(false)}
+ filters={filters}
+ onChange={setChosenFilters}
+ years={yearChoices(subjects)}
+ counts={{ all: subjects.length, theory: categories[1].count, practical: categories[2].count }}
+ />
+
  <CreateSubjectModal
  visible={showCreateModal}
  onClose={handleCloseCreateModal}

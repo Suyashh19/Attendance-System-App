@@ -4,10 +4,13 @@ import { showAlert } from '../store/dialogStore';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from './Button';
+import { Chip } from './Chip';
 import { Text } from './Text';
 import { BottomSheet } from './BottomSheet';
 import type { Subject } from '../types';
 import { colors } from '../constants/theme';
+import { subjectSubtitle } from '../utils/subjectText';
+import { RANGE_PRESETS, presetRange, type RangeKey } from '../utils/exportRange';
 
 interface ExportFilterModalProps {
   visible: boolean;
@@ -33,15 +36,26 @@ export function ExportFilterModal({ visible, onClose, subjects, initialSubjectId
     }
     return subjects.length > 0 ? subjects[0] : null;
   });
-  const [startDate, setStartDate] = useState(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)); // last 30 days
-  const [endDate, setEndDate] = useState(new Date());
+  const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
+  const [startDate, setStartDate] = useState(() => presetRange('30d').from);
+  const [endDate, setEndDate] = useState(() => presetRange('30d').to);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [choosingSubject, setChoosingSubject] = useState(false);
 
-  // Each time the sheet opens, start on the subject whose download button was tapped
+  const pickPreset = (key: Exclude<RangeKey, 'custom'>) => {
+    const { from, to } = presetRange(key);
+    setRangeKey(key);
+    setStartDate(from);
+    setEndDate(to);
+  };
+
+  // Each time the sheet opens, start on the subject whose download button was tapped, and the last 30 days
   useEffect(() => {
     if (!visible) return;
     setSelectedSubject(subjects.find(s => s.id === initialSubjectId) || subjects[0] || null);
+    setChoosingSubject(false);
+    pickPreset('30d');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialSubjectId]);
 
@@ -72,39 +86,64 @@ export function ExportFilterModal({ visible, onClose, subjects, initialSubjectId
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Export Attendance"
-      subtitle={selectedSubject ? selectedSubject.name : 'Choose a subject and a date range.'}
+      title="Download report"
+      subtitle="An Excel sheet of every student's status for each lecture."
     >
-      {/* Subject Selection */}
-      <Text className="text-light-muted font-bold text-xs tracking-widest mb-3">SELECT SUBJECT</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row mb-6 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
-        {subjects.map(s => {
-          const selected = selectedSubject?.id === s.id;
-          return (
-            <TouchableOpacity
-              key={s.id}
-              onPress={() => setSelectedSubject(s)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              className="mr-2 px-4 h-11 rounded-full flex-row items-center"
-              style={{
-                borderWidth: 1.5,
-                backgroundColor: selected ? colors.primaryBg : colors.bg,
-                borderColor: selected ? colors.primary : colors.border,
-              }}
-            >
-              {selected && <Ionicons name="checkmark-circle" size={16} color={colors.primary} style={{ marginRight: 6 }} />}
-              <Text className="font-bold text-sm" style={{ color: selected ? colors.primary : colors.text }}>
-                {s.code}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* Subject: the chosen one as a card, with the full list one tap away */}
+      <Text className="text-light-muted font-bold text-xs tracking-widest mb-2">SUBJECT</Text>
+      <TouchableOpacity
+        onPress={() => setChoosingSubject((open) => !open)}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={selectedSubject ? `Subject ${selectedSubject.name}. Tap to change` : 'Choose a subject'}
+        className="flex-row items-center bg-light rounded-2xl border border-light-border px-4 py-3 mb-5"
+      >
+        <View className="flex-1 mr-3">
+          <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>
+            {selectedSubject?.name ?? 'Choose a subject'}
+          </Text>
+          {selectedSubject && (
+            <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>
+              {subjectSubtitle(selectedSubject)}
+            </Text>
+          )}
+        </View>
+        <Text className="text-primary text-xs font-bold mr-1">{choosingSubject ? 'Close' : 'Change'}</Text>
+        <Ionicons name={choosingSubject ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} />
+      </TouchableOpacity>
+
+      {choosingSubject && (
+        <ScrollView className="mb-5 -mt-2 max-h-[220px]" nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {subjects.map((s) => {
+            const selected = selectedSubject?.id === s.id;
+            return (
+              <TouchableOpacity
+                key={s.id}
+                onPress={() => { setSelectedSubject(s); setChoosingSubject(false); }}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                className={`flex-row items-center px-4 py-3 mb-2 rounded-2xl border ${selected ? 'bg-light-primaryBg border-primary' : 'bg-light-card border-light-border'}`}
+              >
+                <View className="flex-1 mr-3">
+                  <Text className={`font-bold text-sm ${selected ? 'text-primary' : 'text-light-text'}`} numberOfLines={1}>{s.name}</Text>
+                  <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>{subjectSubtitle(s)}</Text>
+                </View>
+                {selected && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* Dates: quick ranges first, exact dates underneath */}
+      <Text className="text-light-muted font-bold text-xs tracking-widest mb-2">DATE RANGE</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
+        {RANGE_PRESETS.map(({ key, label }) => (
+          <Chip key={key} label={label} selected={rangeKey === key} onPress={() => pickPreset(key)} className="mr-2" />
+        ))}
       </ScrollView>
 
-      {/* Date Filters */}
-      <Text className="text-light-muted font-bold text-xs tracking-widest mb-3">DATE RANGE</Text>
       <View className="flex-row items-center mb-6">
         <TouchableOpacity
           onPress={() => setShowStartPicker(true)}
@@ -142,7 +181,7 @@ export function ExportFilterModal({ visible, onClose, subjects, initialSubjectId
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(event, date) => {
             setShowStartPicker(false);
-            if (date) setStartDate(date);
+            if (date) { setStartDate(date); setRangeKey('custom'); }
           }}
         />
       )}
@@ -154,29 +193,17 @@ export function ExportFilterModal({ visible, onClose, subjects, initialSubjectId
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(event, date) => {
             setShowEndPicker(false);
-            if (date) setEndDate(date);
+            if (date) { setEndDate(date); setRangeKey('custom'); }
           }}
         />
       )}
-
-      <View className="bg-light-primaryBg p-4 rounded-2xl flex-row">
-        <View className="w-10 h-10 rounded-xl bg-white items-center justify-center mr-3">
-          <Ionicons name="document-text" size={18} color={colors.primary} />
-        </View>
-        <View className="flex-1">
-          <Text className="text-primary font-bold text-sm mb-1">What you get</Text>
-          <Text className="text-light-muted text-xs leading-[18px]">
-            An Excel sheet listing every student (PRN, name, email) with their status for each lecture in the selected dates.
-          </Text>
-        </View>
-      </View>
 
       <Button
         title="Download Excel"
         icon="download-outline"
         onPress={handleConfirm}
         loading={loading}
-        className="mt-6"
+        disabled={!selectedSubject}
       />
     </BottomSheet>
   );

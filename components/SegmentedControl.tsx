@@ -38,7 +38,14 @@ export function SegmentedControl<T extends string>({ options, value, onChange, c
             {icon && (
               <Ionicons name={icon} size={16} color={selected ? colors.primary : colors.muted} style={{ marginRight: 6 }} />
             )}
-            <Text className={`text-sm ${selected ? 'text-primary font-bold' : 'text-light-muted font-semibold'}`}>{label}</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              className={`text-sm flex-shrink ${selected ? 'text-primary font-bold' : 'text-light-muted font-semibold'}`}
+            >
+              {label}
+            </Text>
             {badge ? (
               <View className="ml-1.5 px-1.5 h-5 min-w-[20px] rounded-full items-center justify-center bg-gold">
                 <Text className="text-[11px] font-bold text-white">{badge}</Text>

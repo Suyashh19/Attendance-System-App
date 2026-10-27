@@ -20,6 +20,7 @@ module.exports = {
         success: { DEFAULT: c.success, bg: c.successBg },
         warning: { DEFAULT: c.warning, bg: c.warningBg },
         danger: { DEFAULT: c.danger, bg: c.dangerBg },
+        info: { DEFAULT: c.info, bg: c.infoBg },
         light: {
           DEFAULT: c.bg,
           card: c.card,

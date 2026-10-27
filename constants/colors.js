@@ -26,4 +26,6 @@ module.exports = {
   warningBg: '#FEF3E2',
   danger: '#D92D20',
   dangerBg: '#FEECEA',
+  info: '#1D4ED8',
+  infoBg: '#E8F0FE',
 };

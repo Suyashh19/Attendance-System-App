@@ -41,7 +41,15 @@ export const API_ROUTES = {
     MY_RECORD: (subjectId: number) => `/attendance/subject/${subjectId}/my-record`,
     EDIT: (sessionId: string | number, studentId: number) => `/attendance/session/${sessionId}/student/${studentId}`,
     SESSION_DETAILS: (sessionId: string | number) => `/attendance/session/${sessionId}`,
-  }
+  },
+  LEAVES: {
+    BASE: '/leaves',
+    MINE: '/leaves/mine',
+    BY_SUBJECT: (subjectId: number) => `/leaves/subject/${subjectId}`,
+    APPROVE_ALL: (subjectId: number) => `/leaves/subject/${subjectId}/approve-all`,
+    REVIEW: (id: number) => `/leaves/${id}/review`,
+    CANCEL: (id: number) => `/leaves/${id}`,
+  },
 };
 
 const api = axios.create({

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { getMySubjects } from '../../services/attendance';
@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import { colors } from '../../constants/theme';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { ListSkeleton } from '../../components/Skeleton';
 import { FacultySubjectView } from '../../components/subject/FacultySubjectView';
 import { StudentSubjectView } from '../../components/subject/StudentSubjectView';
 
@@ -26,13 +27,13 @@ export default function SubjectScreen() {
     return (
       <View className="flex-1 bg-light">
         <ScreenHeader title="Subject" />
-        <View className="flex-1 items-center justify-center p-6">
-          {isLoading ? (
-            <ActivityIndicator size="large" color={colors.primary} />
-          ) : (
+        {isLoading ? (
+          <ListSkeleton />
+        ) : (
+          <View className="flex-1 items-center justify-center p-6">
             <EmptyState icon="alert-circle-outline" text="This subject is no longer available." />
-          )}
-        </View>
+          </View>
+        )}
       </View>
     );
   }

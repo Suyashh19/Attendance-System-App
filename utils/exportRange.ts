@@ -1,3 +1,5 @@
+import { getSemesterCalendar } from './academicYear';
+
 export type RangeKey = '7d' | '30d' | 'term' | 'all' | 'custom';
 
 /** The quick date ranges offered when downloading a report. "custom" is set by picking a date by hand. */
@@ -14,9 +16,15 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-/** The Odd semester starts on 1 June and the Even semester on 1 January, as in the rest of the app. */
+/** The first day of the latest semester to have started, by the semester months in Settings. */
 export function semesterStart(now: Date = new Date()): Date {
-  return now.getMonth() >= 5 ? new Date(now.getFullYear(), 5, 1) : new Date(now.getFullYear(), 0, 1);
+  const { oddStart, evenStart } = getSemesterCalendar();
+  const starts: Date[] = [];
+  for (const year of [now.getFullYear() - 1, now.getFullYear()]) {
+    starts.push(new Date(year, oddStart - 1, 1), new Date(year, evenStart - 1, 1));
+  }
+  const begun = starts.filter((d) => d.getTime() <= now.getTime());
+  return begun.sort((a, b) => b.getTime() - a.getTime())[0];
 }
 
 export function presetRange(key: Exclude<RangeKey, 'custom'>, now: Date = new Date()): { from: Date; to: Date } {

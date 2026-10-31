@@ -8,6 +8,7 @@ import { HistorySubjectCard } from '../../components/HistorySubjectCard';
 import { ExportFilterModal } from '../../components/ExportFilterModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import type { SubjectHistory, Subject, RecentSession } from '../../types';
 import { useRouter } from 'expo-router';
 import { colors, MIN_ATTENDANCE_PERCENT } from '../../constants/theme';
@@ -44,9 +45,7 @@ import {
   NO_FILTERS,
   activeFilterCount,
   applyClassFilters,
-  buildClassList,
-  defaultFilters,
-  filterSummary,
+  buildClassList, filterSummary,
   yearChoices,
   type ClassEntry,
   type ClassFilters,
@@ -62,6 +61,8 @@ import {
 export default function HistoryScreen() {
  const router = useRouter();
  const user = useAuthStore((s) => s.user);
+ // Redraw when the semester months change
+ useSettingsStore((s) => s.calendar);
  const isStudent = user?.role === 'student';
  const isFaculty = user?.role === 'faculty';
 
@@ -78,6 +79,15 @@ export default function HistoryScreen() {
  });
 
  const refetch = isStudent ? refetchHistory : refetchRecent;
+ const [refreshing, setRefreshing] = useState(false);
+ const handleRefresh = async () => {
+ setRefreshing(true);
+ try {
+ await refetch();
+ } finally {
+ setRefreshing(false);
+ }
+ };
 
  const [showExportModal, setShowExportModal] = useState(false);
  const [isExporting, setIsExporting] = useState(false);
@@ -99,21 +109,61 @@ export default function HistoryScreen() {
  // Students also wait for their subjects, which say which semester each belongs to
  const isLoading = isStudent ? historyLoading || subjectsLoading : recentLoading;
 
- const filters = useMemo(() => chosenFilters ?? defaultFilters(subjects), [chosenFilters, subjects]);
+ // Faculty: the semester being viewed. Untouched = the running one, else the newest they have.
+ const [chosenFacultyScope, setChosenFacultyScope] = useState<string | null>(null);
+ const facultySpanById = useMemo(() => new Map(subjects.map((s) => [Number(s.id), s.span])), [subjects]);
+ const facultyScopeOpts = useMemo(() => scopeOptions(subjects, facultySpanById), [subjects, facultySpanById]);
+ const facultyScope =
+ chosenFacultyScope && (chosenFacultyScope === ALL_TIME || facultyScopeOpts.some((o) => o.key === chosenFacultyScope))
+ ? chosenFacultyScope
+ : defaultScope(facultyScopeOpts);
+ const facultyScopeLabel =
+ facultyScope === ALL_TIME ? 'All time' : (facultyScopeOpts.find((o) => o.key === facultyScope)?.label ?? 'All time');
+ const facultySubjects = useMemo(
+ () => inScope(subjects, facultyScope, facultySpanById),
+ [subjects, facultyScope, facultySpanById]
+ );
+ const facultySemesterItems = useMemo<SemesterItem[]>(
+ () => facultyScopeOpts.map((o) => ({
+ key: o.key,
+ label: o.label,
+ dates: semesterSpanLabel(o.key) ?? 'No academic year set',
+ subjects: inScope(subjects, o.key, facultySpanById).length,
+ percent: null,
+ belowCount: 0,
+ })),
+ [facultyScopeOpts, subjects, facultySpanById]
+ );
+ const facultyAllItem: SemesterItem = {
+ key: ALL_TIME,
+ label: 'All time',
+ dates: 'Every semester',
+ subjects: subjects.length,
+ percent: null,
+ belowCount: 0,
+ };
+
+ // Type and subject are the only filters left in the sheet; year and semester come from the switcher
+ const filters = chosenFilters ?? NO_FILTERS;
  const filterCount = activeFilterCount(filters);
 
  const filteredFacultySubjects = useMemo(
- () => applyClassFilters(subjects, filters, query),
- [subjects, filters, query]
+ () => applyClassFilters(facultySubjects, filters, query),
+ [facultySubjects, filters, query]
  );
  const reportEntries = useMemo(() => buildClassList(filteredFacultySubjects, null), [filteredFacultySubjects]);
  const clearReportFilters = () => { setChosenFilters(NO_FILTERS); setQuery(''); };
 
  // The newest 10 until something is typed or filtered, then every fetched class that matches
  const spanBySubject = useMemo(() => new Map(subjects.map((s) => [Number(s.id), s.span])), [subjects]);
+ const facultySubjectIds = useMemo(() => new Set(facultySubjects.map((s) => Number(s.id))), [facultySubjects]);
+ const scopedRecent = useMemo(
+ () => recentSessions.filter((s) => facultySubjectIds.has(Number(s.subjectId))),
+ [recentSessions, facultySubjectIds]
+ );
  const visibleRecent = useMemo(
- () => applyRecentFilters(recentSessions, recentFilters, recentQuery, spanBySubject),
- [recentSessions, recentFilters, recentQuery, spanBySubject]
+ () => applyRecentFilters(scopedRecent, recentFilters, recentQuery, spanBySubject),
+ [scopedRecent, recentFilters, recentQuery, spanBySubject]
  );
  const recentEntries = useMemo(() => groupSessionsByDate(visibleRecent), [visibleRecent]);
  const recentFilterCount = activeFilterCount(recentFilters);
@@ -133,6 +183,7 @@ export default function HistoryScreen() {
  const [listQuery, setListQuery] = useState('');
  const [listFilters, setListFilters] = useState<StudentListFilters>(NO_LIST_FILTERS);
  const [showListFilters, setShowListFilters] = useState(false);
+ const [showCalendar, setShowCalendar] = useState(false);
  const listFilteredHistory = useMemo(
  () => applyStudentFilters(scopedHistory, listFilters, listQuery),
  [scopedHistory, listFilters, listQuery]
@@ -208,12 +259,23 @@ export default function HistoryScreen() {
  <SegmentedControl
  options={[
  { key: 'reports', label: 'Download reports', icon: 'download-outline' },
- { key: 'recent', label: 'Recent classes', icon: 'time-outline' },
+ { key: 'recent', label: 'Recent lectures', icon: 'time-outline' },
  ]}
  value={facultyTab}
  onChange={setFacultyTab}
  className="mb-4"
  />
+
+ {subjects.length > 0 && (
+ <SemesterSwitcher
+ items={facultySemesterItems}
+ allItem={facultyAllItem}
+ scope={facultyScope}
+ onChange={setChosenFacultyScope}
+ subtitle="Pick a semester to see its subjects and lectures."
+ showRing={false}
+ />
+ )}
 
  {facultyTab === 'reports' && subjects.length > 0 && (
  <View className="mb-1">
@@ -223,7 +285,7 @@ export default function HistoryScreen() {
  placeholder="Search by subject name or code"
  filterCount={filterCount}
  onOpenFilters={() => setShowFilters(true)}
- summary={filterSummary(filteredFacultySubjects.length, filters)}
+ summary={`${filterSummary(filteredFacultySubjects.length, filters)} · ${facultyScopeLabel}`}
  onShowAll={clearReportFilters}
  />
  </View>
@@ -237,7 +299,7 @@ export default function HistoryScreen() {
  placeholder="Search by subject or date, e.g. 12 oct"
  filterCount={recentFilterCount}
  onOpenFilters={() => setShowFilters(true)}
- summary={recentSummary(visibleRecent.length, recentFilters, recentQuery, recentSubject?.name)}
+ summary={`${recentSummary(visibleRecent.length, recentFilters, recentQuery, recentSubject?.name)} · ${facultyScopeLabel}`}
  onShowAll={clearRecentFilters}
  />
  </View>
@@ -340,7 +402,24 @@ export default function HistoryScreen() {
  </View>
  </Card>
 
+ {/* Folded by default so the subject list is not pushed far down the page */}
+ <TouchableOpacity
+ onPress={() => setShowCalendar((v) => !v)}
+ activeOpacity={0.8}
+ accessibilityRole="button"
+ accessibilityState={{ expanded: showCalendar }}
+ accessibilityLabel={showCalendar ? 'Hide attendance calendar' : 'Show attendance calendar'}
+ className={`bg-light-card border border-light-border rounded-2xl px-4 h-12 flex-row items-center ${showCalendar ? 'mb-3' : 'mb-6'}`}
+ >
+ <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginRight: 10 }} />
+ <Text className="text-light-text font-bold text-[15px] flex-1">Attendance calendar</Text>
+ <Ionicons name={showCalendar ? 'chevron-up' : 'chevron-down'} size={18} color={colors.subtle} />
+ </TouchableOpacity>
+ {showCalendar && (
+ <View className="mb-6">
  <AttendanceCalendar key={scope} subjects={scopedHistory} scope={scope} />
+ </View>
+ )}
 
  <LeaveEntryCard />
 
@@ -378,7 +457,7 @@ export default function HistoryScreen() {
  <View className="flex-1 mr-3">
  <Text className="text-light-text font-bold text-base" numberOfLines={1}>{session.subjectName}</Text>
  <Text className="text-light-muted text-xs font-medium mt-1" numberOfLines={1}>
- {session.subjectCode} · {session.subjectType === 'theory' ? 'Theory' : 'Practical'} · {start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+ {session.subjectCode} · {session.subjectType === 'theory' ? 'Theory' : 'Practical'} · {start.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}
  </Text>
  </View>
 
@@ -406,8 +485,8 @@ export default function HistoryScreen() {
  keyboardShouldPersistTaps="handled"
  refreshControl={
  <RefreshControl
- refreshing={isLoading}
- onRefresh={refetch}
+ refreshing={refreshing}
+ onRefresh={handleRefresh}
  tintColor={colors.primary}
  colors={[colors.primary]}
  />
@@ -443,8 +522,8 @@ export default function HistoryScreen() {
  <Text className="text-light-muted text-sm font-medium mt-3 text-center">
  {facultyTab === 'recent'
  ? recentSessions.length > 0
- ? 'No classes match your search or filters.'
- : 'Classes you take attendance for will appear here.'
+ ? 'No lectures match your search or filters.'
+ : 'Lectures you take attendance for will appear here.'
  : subjects.length === 0
  ? 'Create a subject to download its report.'
  : query.trim()
@@ -544,6 +623,7 @@ export default function HistoryScreen() {
  filters={facultyTab === 'recent' ? recentFilters : filters}
  onChange={facultyTab === 'recent' ? setRecentFilters : setChosenFilters}
  years={yearChoices(subjects)}
+ hideSemester
  subjects={facultyTab === 'recent' ? subjects : undefined}
  counts={facultyTab === 'recent'
  ? {

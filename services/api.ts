@@ -45,6 +45,7 @@ export const API_ROUTES = {
   LEAVES: {
     BASE: '/leaves',
     MINE: '/leaves/mine',
+    PENDING: '/leaves/pending',
     BY_SUBJECT: (subjectId: number) => `/leaves/subject/${subjectId}`,
     APPROVE_ALL: (subjectId: number) => `/leaves/subject/${subjectId}/approve-all`,
     REVIEW: (id: number) => `/leaves/${id}/review`,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, FlatList, TouchableOpacity } from 'react-native';
+import { View, FlatList, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
 import { showAlert } from '../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,8 @@ import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { ProgressRing } from '../components/ProgressRing';
 import { EmptyState, SectionLabel } from '../components/EmptyState';
+import { Chip } from '../components/Chip';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LectureDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -22,7 +24,7 @@ export default function LectureDetailScreen() {
   const queryClient = useQueryClient();
   const sessionId = Number(id);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['session-details', sessionId],
     queryFn: () => getSessionDetails(sessionId),
     enabled: !!sessionId,
@@ -39,6 +41,19 @@ export default function LectureDetailScreen() {
     });
 
   const detailsKey = ['session-details', sessionId];
+
+  // Finding students quickly: search by name, PRN or roll, and show only the ones that need a look
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'INVALID' | 'ABSENT' | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // The new status shows at once; the server catches up in the background and the old one returns if it refuses
   const editMutation = useMutation({
@@ -76,8 +91,20 @@ export default function LectureDetailScreen() {
     },
   });
 
-  const toggleStatus = (studentId: number, currentStatus: string) => {
+  const toggleStatus = (studentId: number, currentStatus: string, name?: string) => {
     const newStatus = currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+    // An excused student has approved leave: do not overwrite that with a stray tap
+    if (currentStatus === 'EXCUSED') {
+      showAlert(
+        'Student is excused',
+        `${name || 'This student'} has approved leave for this lecture. Mark them present anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Mark present', onPress: () => editMutation.mutate({ studentId, status: 'PRESENT' }) },
+        ]
+      );
+      return;
+    }
     editMutation.mutate({ studentId, status: newStatus });
   };
 
@@ -109,18 +136,31 @@ export default function LectureDetailScreen() {
   const rate = students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
   const rateTone = rate >= MIN_ATTENDANCE_PERCENT ? colors.success : colors.danger;
 
+  const needle = query.trim().toLowerCase();
+  const shown = students.filter((s) => {
+    if (statusFilter && s.status !== statusFilter) return false;
+    if (!needle) return true;
+    return [s.name, s.prn, s.rollNo].some((v) => v && String(v).toLowerCase().includes(needle));
+  });
+  const invalidCount = students.filter((s) => s.status === 'INVALID').length;
+  const absentCount = students.filter((s) => s.status === 'ABSENT').length;
+
   return (
     <View className="flex-1 bg-light">
       <ScreenHeader
         title={session.subjectName}
-        subtitle={new Date(session.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        subtitle={new Date(session.date).toLocaleString('en-GB', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
       />
 
       <FlatList
-        data={students}
+        data={shown}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+        }
         ListHeaderComponent={
           <View>
             {/* Stats Card */}
@@ -137,6 +177,44 @@ export default function LectureDetailScreen() {
                 <Text className="text-light-muted text-[11px] font-bold tracking-wide">STUDENTS PRESENT</Text>
               </View>
             </Card>
+
+            {students.length > 0 && (
+              <View className="mb-4">
+                <View className="flex-row items-center bg-light-card border border-light-border rounded-2xl px-4 h-[52px] mb-3">
+                  <Ionicons name="search" size={18} color={colors.subtle} style={{ marginRight: 10 }} />
+                  <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search by name, PRN or roll no."
+                    placeholderTextColor={colors.subtle}
+                    selectionColor={colors.primary}
+                    autoCorrect={false}
+                    className="flex-1 text-light-text font-medium text-[15px] h-full"
+                  />
+                  {query ? (
+                    <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear search">
+                      <Ionicons name="close-circle" size={18} color={colors.subtle} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <View className="flex-row">
+                  <Chip
+                    label={`Needs review · ${invalidCount}`}
+                    icon="alert-circle-outline"
+                    tone="danger"
+                    selected={statusFilter === 'INVALID'}
+                    onPress={() => setStatusFilter(statusFilter === 'INVALID' ? null : 'INVALID')}
+                    className="mr-2"
+                  />
+                  <Chip
+                    label={`Absent · ${absentCount}`}
+                    icon="close-circle-outline"
+                    selected={statusFilter === 'ABSENT'}
+                    onPress={() => setStatusFilter(statusFilter === 'ABSENT' ? null : 'ABSENT')}
+                  />
+                </View>
+              </View>
+            )}
 
             <SectionLabel className="mb-3 ml-1">STUDENTS · TAP A STATUS TO CHANGE IT</SectionLabel>
           </View>
@@ -164,18 +242,21 @@ export default function LectureDetailScreen() {
             </View>
 
             <TouchableOpacity
-              onPress={() => toggleStatus(item.id, item.status)}
+              onPress={() => toggleStatus(item.id, item.status, item.name)}
               disabled={saving.has(item.id)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel={`${item.name} is ${item.status}. Tap to change.`}
             >
-              <StatusPill status={item.status} edited={item.editedByFaculty} />
+              <View className="flex-row items-center">
+                <StatusPill status={item.status} edited={item.editedByFaculty} />
+                <Ionicons name="swap-horizontal" size={14} color={colors.subtle} style={{ marginLeft: 6 }} />
+              </View>
             </TouchableOpacity>
           </Card>
         )}
         ListEmptyComponent={
-          <EmptyState icon="people-outline" text="No students enrolled in this subject." />
+          <EmptyState icon="people-outline" text={students.length > 0 ? 'No students match.' : 'No students enrolled in this subject.'} />
         }
       />
     </View>

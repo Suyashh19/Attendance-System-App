@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, TouchableOpacity } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,11 +26,19 @@ export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<'email' | 'reset'>('email');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const {
     control,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<FormData>({
     resolver: (step === 'email' ? zodResolver(step1Schema) : zodResolver(step2Schema)) as Resolver<FormData>,
@@ -43,9 +51,23 @@ export default function ForgotPasswordScreen() {
       const res = await forgotPassword(data.email);
       showAlert('OTP Sent', res.message || 'Check your email for the OTP.');
       setStep('reset');
+      setCooldown(30);
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to send OTP.';
       showAlert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onResend = async () => {
+    try {
+      setLoading(true);
+      await forgotPassword(getValues('email'));
+      setCooldown(30);
+      showAlert('Code sent', 'A new code is on its way to your email.');
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to send the code.');
     } finally {
       setLoading(false);
     }
@@ -121,11 +143,12 @@ export default function ForgotPasswordScreen() {
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
                       label="Enter OTP"
-                      placeholder="6-digit code"
-                      keyboardType="numeric"
-                      icon="keypad-outline"
-                      onBlur={onBlur}
-                      onChangeText={onChange}
+     placeholder="6-digit code"
+     keyboardType="number-pad"
+     maxLength={6}
+     icon="keypad-outline"
+     onBlur={onBlur}
+     onChangeText={(t) => onChange(t.replace(/\D/g, '').slice(0, 6))}
                       value={value}
                       error={errors.otp?.message}
                     />
@@ -155,6 +178,18 @@ export default function ForgotPasswordScreen() {
                   loading={loading}
                   className="mt-4"
                 />
+                <TouchableOpacity className="mt-4 items-center p-2" onPress={onResend} disabled={cooldown > 0 || loading}>
+                  <Text className={`font-semibold ${cooldown > 0 ? 'text-light-muted' : 'text-primary'}`}>
+                    {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="items-center p-2"
+                  onPress={() => { setValue('otp', ''); setValue('newPassword', ''); setStep('email'); }}
+                  disabled={loading}
+                >
+                  <Text className="font-semibold text-light-muted">Use a different email</Text>
+                </TouchableOpacity>
               </>
             )}
           </AuthShell>

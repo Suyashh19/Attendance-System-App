@@ -53,7 +53,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
 
   const confirmLeave = () => {
     showAlert(
-      'Leave Class',
+      'Leave Subject',
       `Are you sure you want to unenroll from "${subject.name}"? This will remove your attendance record for this subject.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -125,7 +125,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
               </Text>
               <Text className="text-light-muted text-sm leading-5 text-center mt-1">
                 {subject.enrollmentStatus === 'PENDING'
-                  ? 'Your faculty needs to approve your request before you can mark attendance for this class.'
+                  ? 'Your faculty needs to approve your request before you can mark attendance for this subject.'
                   : 'Your faculty did not approve this request. Speak to them if you think this is a mistake.'}
               </Text>
             </Card>
@@ -152,7 +152,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
                           <Text className="text-light-muted text-base font-semibold"> / {total}</Text>
                         </Text>
                         <Text className="text-light-muted text-xs font-medium mt-0.5">
-                          {present} of {total} classes
+                          classes attended
                         </Text>
                         <View className="h-2 rounded-full bg-light-border overflow-hidden mt-3">
                           <View
@@ -208,7 +208,7 @@ export function StudentSubjectView({ subject }: StudentSubjectViewProps) {
         }}
         ListFooterComponent={
           <Button
-            title="Leave this class"
+            title="Leave this subject"
             variant="dangerSoft"
             icon="exit-outline"
             onPress={confirmLeave}

@@ -19,6 +19,7 @@ import { queryClient, queryPersister, CACHE_MAX_AGE } from '../services/queryCli
 import { warmUpServer } from '../services/api';
 import { ServerWakeBanner } from '../components/ServerWakeBanner';
 import { DialogHost } from '../components/DialogHost';
+import { useSettingsStore } from '../store/settingsStore';
 
 import '../global.css';
 
@@ -76,6 +77,8 @@ function RootLayoutNav() {
  <Stack.Screen name="subject/[id]" options={{ animation: 'slide_from_right' }} />
  <Stack.Screen name="lecture-detail" options={{ animation: 'slide_from_right' }} />
  <Stack.Screen name="leave" options={{ animation: 'slide_from_right' }} />
+ <Stack.Screen name="leave-requests" options={{ animation: 'slide_from_right' }} />
+ <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
  </Stack>
  </ThemeProvider>
  );
@@ -97,7 +100,7 @@ export default function RootLayout() {
  useEffect(() => {
  async function init() {
  try {
- await hydrate();
+ await Promise.all([hydrate(), useSettingsStore.getState().hydrate()]);
  } catch (err) {
  console.warn('[RootLayout] Hydration error:', err);
  } finally {

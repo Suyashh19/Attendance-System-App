@@ -29,13 +29,13 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       >
         <Hero className="px-6 pb-24 items-center" style={{ paddingTop: insets.top + 44 }}>
           <View
-            className="w-[84px] h-[84px] bg-white rounded-[26px] items-center justify-center mb-6 overflow-hidden"
+            className="w-[84px] h-[84px] rounded-[26px] mb-6 overflow-hidden"
             style={shadow.glow}
           >
             <Image
               source={require('../assets/icon.png')}
               style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           </View>
           <Text className="text-white text-[30px] font-extrabold text-center">{title}</Text>

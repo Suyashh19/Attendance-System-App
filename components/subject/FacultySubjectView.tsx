@@ -33,6 +33,7 @@ import { EmptyState, SectionLabel } from '../EmptyState';
 import { ListSkeleton } from '../Skeleton';
 import { StatusPill } from '../StatusPill';
 import { LeaveRejectSheet } from '../LeaveRejectSheet';
+import { BottomSheet } from '../BottomSheet';
 
 type Tab = 'students' | 'requests' | 'leaves' | 'lectures';
 
@@ -62,6 +63,8 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
   const [deleting, setDeleting] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showDuplicate, setShowDuplicate] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [lowestFirst, setLowestFirst] = useState(false);
 
   const enrollments = useQuery({
     queryKey: ['enrollments', subjectId],
@@ -122,7 +125,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
 
   const confirmRemove = (student: EnrolledStudent) => {
     showAlert(
-      'Remove from class',
+      'Remove from subject',
       `${student.name || 'This student'} will no longer be able to mark attendance for ${subject.name}. Their past records are kept, and you can add them back from the Requests tab.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -143,7 +146,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
       queryClient.invalidateQueries({ queryKey: ['subjects'] });
-      showAlert('Approved', `${count} ${count === 1 ? 'student was' : 'students were'} added to the class.`);
+      showAlert('Approved', `${count} ${count === 1 ? 'student was' : 'students were'} added to the subject.`);
     },
     onError: (err) => showAlert('Could not approve', getErrorMessage(err, 'Please try again.')),
   });
@@ -286,7 +289,15 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           if (!q) return true;
           return [s.name, s.prn, s.rollNo, s.email].some((v) => v && String(v).toLowerCase().includes(q));
         })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .sort((a, b) => {
+          if (lowestFirst) {
+            // Lowest attendance first; students with no classes yet go last
+            const pa = percentOf(a.id);
+            const pb = percentOf(b.id);
+            if (pa !== pb) return (pa ?? Infinity) - (pb ?? Infinity);
+          }
+          return (a.name || '').localeCompare(b.name || '');
+        })
         .map((student) => ({ kind: 'student' as const, key: `s-${student.id}`, student }));
     }
 
@@ -311,7 +322,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
     return (sessions.data ?? []).map((session) => ({ kind: 'lecture' as const, key: `l-${session.id}`, session }));
     // percentOf reads summaryByStudent
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, approved, pending, removed, sessions.data, search, onlyLow, summaryByStudent, pendingLeaves, answeredLeaves]);
+  }, [tab, approved, pending, removed, sessions.data, search, onlyLow, lowestFirst, summaryByStudent, pendingLeaves, answeredLeaves]);
 
   const isLoading =
     tab === 'lectures' ? sessions.isLoading : tab === 'leaves' ? leaves.isLoading : enrollments.isLoading;
@@ -375,7 +386,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
             </View>
 
             <Button
-              title="Remove from class"
+              title="Remove from subject"
               variant="dangerSoft"
               size="sm"
               icon="person-remove-outline"
@@ -540,7 +551,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         ? 'No requests waiting for you.'
         : tab === 'leaves'
           ? 'No leave requests. When a student applies, it appears here.'
-          : 'No lectures yet. Start attendance from the Classes tab.';
+          : 'No lectures yet. Start attendance from the Subjects tab.';
 
   return (
     <View className="flex-1 bg-light">
@@ -549,10 +560,8 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         subtitle={subjectSubtitle(subject)}
         right={
           <View className="flex-row ml-3">
-            <HeaderButton icon="create-outline" label="Edit subject" onPress={() => setShowEdit(true)} />
             <HeaderButton icon="share-social-outline" label="Share subject code" onPress={() => void shareSubjectCode(subject)} />
-            <HeaderButton icon="copy-outline" label="Duplicate subject" onPress={() => setShowDuplicate(true)} />
-            <HeaderButton icon="trash-outline" label="Delete subject" onPress={confirmDelete} busy={deleting} />
+            <HeaderButton icon="ellipsis-horizontal" label="More options" onPress={() => setShowMenu(true)} busy={deleting} />
           </View>
         }
       >
@@ -624,14 +633,22 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
                   ) : null}
                 </View>
 
-                <Chip
-                  label={`Below ${MIN_ATTENDANCE_PERCENT}% · ${lowCount}`}
-                  icon="alert-circle-outline"
-                  tone="danger"
-                  selected={onlyLow}
-                  onPress={() => setOnlyLow(!onlyLow)}
-                  className="self-start"
-                />
+                <View className="flex-row">
+                  <Chip
+                    label={`Below ${MIN_ATTENDANCE_PERCENT}% · ${lowCount}`}
+                    icon="alert-circle-outline"
+                    tone="danger"
+                    selected={onlyLow}
+                    onPress={() => setOnlyLow(!onlyLow)}
+                    className="mr-2"
+                  />
+                  <Chip
+                    label="Lowest first"
+                    icon="swap-vertical-outline"
+                    selected={lowestFirst}
+                    onPress={() => setLowestFirst(!lowestFirst)}
+                  />
+                </View>
               </View>
             )}
           </View>
@@ -674,6 +691,28 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           setRejecting(null);
         }}
       />
+
+      <BottomSheet visible={showMenu} onClose={() => setShowMenu(false)} title="Subject options">
+        <MenuRow
+          icon="create-outline"
+          label="Edit subject"
+          hint="Change the name, type or semester"
+          onPress={() => { setShowMenu(false); setShowEdit(true); }}
+        />
+        <MenuRow
+          icon="copy-outline"
+          label="Make a copy"
+          hint="Start the same subject for a new semester"
+          onPress={() => { setShowMenu(false); setShowDuplicate(true); }}
+        />
+        <MenuRow
+          icon="trash-outline"
+          label="Delete subject"
+          hint="Removes its lectures and attendance records"
+          danger
+          onPress={() => { setShowMenu(false); confirmDelete(); }}
+        />
+      </BottomSheet>
 
       <CreateSubjectModal
         visible={showEdit}
@@ -722,6 +761,39 @@ function HeaderButton({
       className="w-10 h-10 bg-white/10 border border-white/15 rounded-full items-center justify-center ml-2"
     >
       {busy ? <ActivityIndicator size="small" color={colors.white} /> : <Ionicons name={icon} size={17} color={colors.white} />}
+    </TouchableOpacity>
+  );
+}
+
+/** One line in the subject options sheet. */
+function MenuRow({
+  icon,
+  label,
+  hint,
+  onPress,
+  danger,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  hint: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="flex-row items-center py-3"
+    >
+      <View className={`w-11 h-11 rounded-2xl items-center justify-center mr-4 ${danger ? 'bg-danger-bg' : 'bg-light'}`}>
+        <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.text} />
+      </View>
+      <View className="flex-1">
+        <Text className={`font-bold text-[15px] ${danger ? 'text-danger' : 'text-light-text'}`}>{label}</Text>
+        <Text className="text-light-muted text-xs font-medium mt-0.5">{hint}</Text>
+      </View>
     </TouchableOpacity>
   );
 }

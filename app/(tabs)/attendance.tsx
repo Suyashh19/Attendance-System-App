@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, BackHandler } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,6 +60,11 @@ export default function AttendanceScreen() {
  const [timeOffset, setTimeOffset] = useState<number>(0);
  const [initialTimeLeft, setInitialTimeLeft] = useState<number>(15);
 
+ // The student stays on this screen until the window closes, whether or not they have marked
+ const [forceRelease, setForceRelease] = useState(false);
+ const [secondsLeft, setSecondsLeft] = useState(0);
+ const windowHeld = !!sessionData && sessionState === 'ACTIVE' && verification.sessionActive && !forceRelease;
+
  const codeLength = sessionData?.codeLength || DEFAULT_CODE_LENGTH;
 
  // Which session payload is on screen, and whether its result was already closed by the student
@@ -97,9 +102,7 @@ export default function AttendanceScreen() {
  // --- 1. Reset ALL States for New Session ---
  setSessionData(null); setSessionState('IDLE');
  setCode('');
- setCodeError(undefined);
- setIsSubmitting(false);
- setResultStatus(null);
+ setCodeError(undefined); setIsSubmitting(false); setResultStatus(null); setForceRelease(false);
  setResultMessage(undefined);
  setSessionState('IDLE');
   setVerification({ sessionActive: true, deviceMatched: true, timeValid: true, }); // Initial state reset
@@ -271,6 +274,33 @@ export default function AttendanceScreen() {
  };
 
 
+ // Android back button does nothing while the window is open
+ useEffect(() => {
+   if (!windowHeld) return;
+   const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+   return () => sub.remove();
+ }, [windowHeld]);
+
+ // Seconds the student still has to wait, shown on the result popup
+ useEffect(() => {
+   if (!sessionData || !windowHeld) return;
+   const expiry = new Date(sessionData.windowExpiry).getTime();
+   if (isNaN(expiry)) return;
+   const tick = () => setSecondsLeft(Math.max(0, Math.ceil((expiry - (Date.now() + timeOffset)) / 1000)));
+   tick();
+   const id = setInterval(tick, 500);
+   return () => clearInterval(id);
+ }, [sessionData, timeOffset, windowHeld]);
+
+ // Safety net: a student is never kept here past the window, even if an update never arrives
+ useEffect(() => {
+   if (!sessionData) return;
+   const expiry = new Date(sessionData.windowExpiry).getTime();
+   const wait = isNaN(expiry) ? 0 : Math.max(0, expiry - (Date.now() + timeOffset)) + 3000;
+   const id = setTimeout(() => setForceRelease(true), wait);
+   return () => clearTimeout(id);
+ }, [sessionData, timeOffset]);
+
  const handleModalDismiss = () => {
  dismissedRef.current = true;
  setResultStatus(null);
@@ -363,6 +393,7 @@ export default function AttendanceScreen() {
  status={resultStatus}
  message={resultMessage}
  onDismiss={handleModalDismiss}
+      holdSeconds={windowHeld ? Math.max(secondsLeft, 1) : 0}
  />
 
  </View>

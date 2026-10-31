@@ -12,11 +12,14 @@ import type { AttendanceStatus } from '../types';
 import { Button } from './Button';
 import { Text } from './Text';
 import { colors, shadow } from '../constants/theme';
+import { friendlyFailure } from '../utils/attendanceMessages';
 
 interface AttendanceResultModalProps {
   visible: boolean;
   status: AttendanceStatus | 'LOADING' | null;
   message?: string;
+  /** Seconds the student must still stay on the screen; 0 means they may leave */
+  holdSeconds?: number;
   onDismiss: () => void;
 }
 
@@ -24,6 +27,7 @@ export function AttendanceResultModal({
   visible,
   status,
   message,
+  holdSeconds = 0,
   onDismiss,
 }: AttendanceResultModalProps) {
   if (!visible || !status) return null;
@@ -59,8 +63,8 @@ export function AttendanceResultModal({
           color: colors.warning,
           bg: colors.warningBg,
           icon: 'warning',
-          title: 'Invalid Attempt',
-          desc: message ? `Reason: ${message}` : 'Verification failed for this attempt.',
+          title: friendlyFailure(message).title,
+          desc: friendlyFailure(message).desc,
         };
       case 'EXPIRED':
         return {
@@ -84,7 +88,13 @@ export function AttendanceResultModal({
   const config = getConfig();
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={holdSeconds > 0 ? undefined : onDismiss}
+    >
       <View className="flex-1 items-center justify-center p-6" style={{ backgroundColor: colors.overlay }}>
         <Animated.View
           entering={ZoomIn.duration(300)}
@@ -122,9 +132,18 @@ export function AttendanceResultModal({
 
           {status !== 'LOADING' && (
             <Animated.View entering={FadeIn.delay(400)} style={{ width: '100%' }}>
+              {holdSeconds > 0 && (
+                <View className="flex-row items-center justify-center mb-3">
+                  <Ionicons name="lock-closed" size={14} color={colors.muted} style={{ marginRight: 6 }} />
+                  <Text className="text-light-muted text-xs font-semibold text-center">
+                    Please stay on this screen until the timer ends
+                  </Text>
+                </View>
+              )}
               <Button
-                title="Back to Home"
+                title={holdSeconds > 0 ? `Please wait ${holdSeconds}s` : 'Back to Home'}
                 onPress={onDismiss}
+                disabled={holdSeconds > 0}
                 className="w-full"
                 variant={status === 'PRESENT' ? 'primary' : 'outline'}
               />

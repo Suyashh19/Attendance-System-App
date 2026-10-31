@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState, TextInput } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -11,7 +11,9 @@ import {
  endSession,
  getActiveSession,
  getMyActiveSession,
+ getSubjectEnrollments,
 } from '../../services/attendance';
+import { getPendingLeaves } from '../../services/leaves';
 import { CreateSubjectModal } from '../../components/CreateSubjectModal';
 import { EnrollModal } from '../../components/EnrollModal';
 import { SubjectCard } from '../../components/SubjectCard';
@@ -22,6 +24,7 @@ import { FacultySessionModal } from '../../components/FacultySessionModal';
 import { AttendanceSummaryModal } from '../../components/AttendanceSummaryModal';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import type { SessionStartedPayload, Subject } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../components/Button';
@@ -29,37 +32,25 @@ import { getErrorMessage } from '../../services/api';
 import { colors } from '../../constants/theme';
 import { Text } from '../../components/Text';
 import { Hero } from '../../components/Hero';
-import { ClassFilterSheet } from '../../components/ClassFilterSheet';
-import { SearchFilterBar } from '../../components/SearchFilterBar';
+import { Chip } from '../../components/Chip';
 import { EmptyState, SectionLabel } from '../../components/EmptyState';
 import { offerToShareSubject } from '../../utils/shareSubject';
-import {
-  NO_FILTERS,
-  activeFilterCount,
-  applyClassFilters,
-  buildClassList,
-  defaultFilters,
-  filterSummary,
-  filtersShowing,
-  yearChoices,
-  type ClassEntry,
-  type ClassFilters,
-} from '../../utils/classesView';
+import { inScope, defaultScope, scopeOptions, summarizeHistory } from '../../utils/historyView';
+import { NO_FILTERS, applyClassFilters, buildClassList, type ClassEntry } from '../../utils/classesView';
 import {
   currentAcademicYear,
   currentTerm,
-  groupByAcademicYear,
-  subjectsInTerm,
-  termsPresent,
-  OTHER_YEAR,
-  type Term,
-} from '../../utils/academicYear';
+  groupByAcademicYear, parseSpan, subjectsInTerm, termsPresent, OTHER_YEAR, type Term, } from '../../utils/academicYear';
 
 export default function HomeScreen() {
  const router = useRouter();
  const insets = useSafeAreaInsets();
  const queryClient = useQueryClient();
  const user = useAuthStore((s) => s.user);
+ // The semester months are read by plain functions, so this only makes the screen redraw when they change
+ useSettingsStore((s) => s.calendar);
+ const confirmStart = useSettingsStore((s) => s.confirmStart);
+ const homeStart = useSettingsStore((s) => s.homeStart);
  
  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
  const [activeSessionData, setActiveSessionData] = useState<SessionStartedPayload | null>(null);
@@ -73,10 +64,12 @@ export default function HomeScreen() {
  const [showCreateModal, setShowCreateModal] = useState(false);
  const [showEnrollModal, setShowEnrollModal] = useState(false);
 
- // Faculty: null = not touched yet, so the list opens on the running academic year and term
- const [chosenFilters, setChosenFilters] = useState<ClassFilters | null>(null);
+ // Faculty: undefined = not touched yet, so the list opens inside the running academic year and term
+ const [facultyYear, setFacultyYear] = useState<string | null | undefined>(undefined);
+ const [facultyTerm, setFacultyTerm] = useState<Term | null | undefined>(undefined);
+ const [facultyType, setFacultyType] = useState<'theory' | 'practical' | null>(null);
  const [search, setSearch] = useState('');
- const [showFilters, setShowFilters] = useState(false);
+ 
  // Student: the academic year (and the term inside it) being browsed. No year = the list of years.
  const [openYear, setOpenYear] = useState<string | null>(null);
  const [pickedTerm, setPickedTerm] = useState<Term | null | undefined>(undefined);
@@ -116,19 +109,32 @@ export default function HomeScreen() {
  [history]
  );
 
+ // Faculty: how many leave requests are waiting, across all subjects
+ const { data: pendingLeaves, refetch: refetchLeaves } = useQuery({
+ queryKey: ['pending-leaves'],
+ queryFn: getPendingLeaves,
+ enabled: isFaculty,
+ });
+ const pendingLeaveCount = pendingLeaves?.length ?? 0;
+
+ // Faculty: the class list of the subject being taken, so the session screen can show the whole room
+ const { data: sessionRoster } = useQuery({
+ queryKey: ['enrollments', Number(facultyActiveSession?.subjectId)],
+ queryFn: () => getSubjectEnrollments(Number(facultyActiveSession.subjectId)),
+ enabled: isFaculty && !!facultyActiveSession,
+ });
+
  const [refreshing, setRefreshing] = useState(false);
  const handleRefresh = async () => {
  setRefreshing(true);
  try {
- await Promise.all([refetch(), isStudent ? refetchHistory() : null]);
+ await Promise.all([refetch(), isStudent ? refetchHistory() : null, isFaculty ? refetchLeaves() : null]);
  } finally {
  setRefreshing(false);
  }
  };
 
- // Faculty filters. A chosen year or term that no longer matches anything simply shows an empty state with Clear.
- const filters = chosenFilters ?? defaultFilters(subjects);
- const filterCount = activeFilterCount(filters);
+ 
 
  // Student: subjects grouped by academic year. A single year opens straight away, with no card to tap.
  const yearGroups = React.useMemo(() => groupByAcademicYear(subjects), [subjects]);
@@ -146,10 +152,36 @@ export default function HomeScreen() {
  : termsHere[0] ?? null;
  const showYearCards = user?.role === 'student' && subjects.length > 0 && !studentYear;
 
- const filteredSubjects = user?.role === 'faculty'
- ? applyClassFilters(subjects, filters, search)
- : showYearCards
- ? []
+ // Faculty: the same year > semester containers the student sees. Typing in the search box looks across every year.
+ const facultyGroups = React.useMemo(() => groupByAcademicYear(subjects), [subjects]);
+ const searching = isFaculty && search.trim().length > 0;
+ const defaultFacultyYear =
+ facultyGroups.length === 1
+ ? facultyGroups[0].key
+ : homeStart === 'years'
+ ? null
+ : facultyGroups.find((g) => g.key === currentAcademicYear())?.key ?? null;
+ const openFacultyYear = facultyYear === undefined ? defaultFacultyYear : facultyYear;
+ const facultyGroup = openFacultyYear ? facultyGroups.find((g) => g.key === openFacultyYear) ?? null : null;
+ const facultyTermsHere = facultyGroup ? termsPresent(facultyGroup) : [];
+ const facultyActiveTerm: Term | null = !facultyGroup
+ ? null
+ : facultyTerm !== undefined && facultyTermsHere.includes(facultyTerm)
+ ? facultyTerm
+ : facultyTermsHere.includes(currentTerm())
+ ? currentTerm()
+ : facultyTermsHere[0] ?? null;
+ const showFacultyYearCards = isFaculty && subjects.length > 0 && !facultyGroup && !searching;
+ const termSubjects = facultyGroup ? subjectsInTerm(facultyGroup.subjects, facultyActiveTerm) : [];
+ const theoryCount = termSubjects.filter((s) => s.type === 'theory').length;
+ const practicalCount = termSubjects.filter((s) => s.type === 'practical').length;
+ const facultyList: Subject[] = searching
+ ? applyClassFilters(subjects, NO_FILTERS, search)
+ : facultyGroup
+ ? termSubjects.filter((s) => !facultyType || s.type === facultyType)
+ : [];
+
+ const filteredSubjects = isFaculty ? facultyList : showYearCards ? []
  : studentYear
  ? subjectsInTerm(studentYear.subjects, activeTerm)
  : subjects;
@@ -267,6 +299,10 @@ export default function HomeScreen() {
  // ─── Handlers ───────────────────────────────────────────────────────────────
  // One confirmation, then the session starts right away (it always starts "now")
  const handleStartSessionPress = (subject: Subject) => {
+ if (!confirmStart) {
+ startSessionFor(subject);
+ return;
+ }
  showAlert(
  'Start Attendance',
  `Start an attendance session for "${subject.name}"?\n\nStudents get a few seconds to type the code you show them, so start only when the class is ready.`,
@@ -391,7 +427,10 @@ export default function HomeScreen() {
  const handleCreateSuccess = React.useCallback((type: 'theory' | 'practical', created: Subject) => {
  setShowCreateModal(false);
  // Show the new subject: filter to its year and term, and drop a search that would hide it
- setChosenFilters(filtersShowing(created.span));
+ const parsed = parseSpan(created.span);
+ setFacultyYear(parsed?.year ?? OTHER_YEAR);
+ setFacultyTerm(parsed?.term ?? null);
+ setFacultyType(null);
  setSearch('');
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
  offerToShareSubject(created);
@@ -400,7 +439,7 @@ export default function HomeScreen() {
  const handleEnrollSuccess = React.useCallback(() => {
  setShowEnrollModal(false);
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
- showAlert('Request Sent', 'Your faculty needs to approve the request before you can mark attendance for this class.');
+ showAlert('Request Sent', 'Your faculty needs to approve the request before you can mark attendance for this subject.');
  }, [queryClient]);
 
  // ─── Renderers ──────────────────────────────────────────────────────────────
@@ -412,7 +451,7 @@ export default function HomeScreen() {
  <EmptyState
  icon="cloud-offline-outline"
  tone="danger"
- title="Could not load your classes"
+ title="Could not load your subjects"
  text="Check your internet connection and try again."
  action={<Button title="Try Again" icon="refresh" onPress={() => refetch()} />}
  />
@@ -429,25 +468,23 @@ export default function HomeScreen() {
  const firstName = user?.name?.split(' ')[0] || 'there';
  const liveSubject = liveSubjectId !== null ? subjects.find((s) => s.id === liveSubjectId) : undefined;
 
- const categories: { key: 'theory' | 'practical' | null; label: string; count: number }[] = [
- { key: null, label: 'All', count: subjects.length },
- { key: 'theory', label: 'Theory', count: subjects.filter((s) => s.type === 'theory').length },
- { key: 'practical', label: 'Practical', count: subjects.filter((s) => s.type === 'practical').length },
- ];
+ 
 
- // Three numbers under the name
- const totalPresent = (history ?? []).reduce((sum, h) => sum + h.stats.PRESENT, 0);
- const totalClasses = (history ?? []).reduce((sum, h) => sum + h.stats.total, 0);
- const overview = isFaculty
- ? [
- { label: 'Subjects', value: String(subjects.length) },
- { label: 'Theory', value: String(categories[1].count) },
- { label: 'Practical', value: String(categories[2].count) },
- ]
- : [
- { label: 'Classes', value: String(subjects.length) },
- { label: 'Attended', value: `${totalPresent}/${totalClasses}` },
- { label: 'Overall', value: totalClasses > 0 ? `${Math.round((totalPresent / totalClasses) * 100)}%` : '--' },
+ // Students: three numbers under the name
+ // Same semester the Attendance tab opens on, so the two numbers always agree
+ const spanBySubjectId = new Map(subjects.map((s) => [Number(s.id), s.span]));
+ const scopeChoices = scopeOptions(history ?? [], spanBySubjectId);
+ const scopeKey = defaultScope(scopeChoices);
+ const scopedHistory = inScope(history ?? [], scopeKey, spanBySubjectId);
+ const semesterSummary = summarizeHistory(scopedHistory);
+ const scopeChoice = scopeChoices.find((o) => o.key === scopeKey);
+ const overview = [
+ { label: 'Subjects', value: String(history ? scopedHistory.length : subjects.length) },
+ { label: 'Attended', value: `${semesterSummary.present}/${semesterSummary.total}` },
+ {
+ label: scopeChoice?.term ? `${scopeChoice.term} sem.` : 'Overall',
+ value: semesterSummary.percent !== null ? `${semesterSummary.percent}%` : '--',
+ },
  ];
 
  return (
@@ -480,7 +517,7 @@ export default function HomeScreen() {
  onPress={openAddModal}
  activeOpacity={0.85}
  accessibilityRole="button"
- accessibilityLabel={isFaculty ? 'Create a subject' : 'Enroll in a class'}
+ accessibilityLabel={isFaculty ? 'Create a subject' : 'Enroll in a subject'}
  className="bg-white h-11 pl-3 pr-4 rounded-full flex-row items-center"
  >
  <Ionicons name={isFaculty ? 'add' : 'enter-outline'} size={18} color={colors.primary} style={{ marginRight: 6 }} />
@@ -488,6 +525,33 @@ export default function HomeScreen() {
  </TouchableOpacity>
  </View>
 
+ {isFaculty ? (
+ <TouchableOpacity
+ onPress={() => router.push('/leave-requests' as any)}
+ activeOpacity={0.85}
+ accessibilityRole="button"
+ accessibilityLabel={`Leave requests, ${pendingLeaveCount} waiting`}
+ className={`rounded-2xl px-4 flex-row items-center ${pendingLeaveCount > 0 ? 'bg-white py-3 mt-5' : 'bg-white/10 border border-white/10 py-2 mt-4'}`}
+ >
+ <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${pendingLeaveCount > 0 ? 'bg-primary/10' : 'bg-white/10'}`}>
+ <Ionicons name="calendar-outline" size={20} color={pendingLeaveCount > 0 ? colors.primary : colors.white} />
+ </View>
+ <View className="flex-1">
+ <Text className={`text-[15px] font-bold ${pendingLeaveCount > 0 ? 'text-light-text' : 'text-white'}`}>Leave requests</Text>
+ <Text className={`text-xs font-medium mt-0.5 ${pendingLeaveCount > 0 ? 'text-light-muted' : 'text-white/60'}`}>
+ {pendingLeaveCount > 0
+ ? `${pendingLeaveCount} waiting for your answer`
+ : 'Nothing waiting'}
+ </Text>
+ </View>
+ {pendingLeaveCount > 0 && (
+ <View className="bg-primary min-w-[28px] h-7 px-2 rounded-full items-center justify-center mr-2">
+ <Text className="text-white text-xs font-extrabold">{pendingLeaveCount}</Text>
+ </View>
+ )}
+ <Ionicons name="chevron-forward" size={18} color={pendingLeaveCount > 0 ? colors.primary : 'rgba(255, 255, 255, 0.6)'} />
+ </TouchableOpacity>
+ ) : (
  <View className="flex-row mt-5">
  {overview.map(({ label, value }, i) => (
  <View
@@ -499,6 +563,7 @@ export default function HomeScreen() {
  </View>
  ))}
  </View>
+ )}
 
  {/* What is happening right now */}
  <View className={`rounded-2xl px-4 py-3 mt-3 flex-row items-center ${liveSubject ? 'bg-white' : 'bg-white/10 border border-white/10'}`}>
@@ -521,15 +586,91 @@ export default function HomeScreen() {
 
  {isFaculty && subjects.length > 0 && (
  <View className="px-4 mt-4">
- <SearchFilterBar
+ <View className="flex-row items-center bg-light-card border border-light-border rounded-2xl px-4 h-[52px]">
+ <Ionicons name="search" size={18} color={colors.subtle} style={{ marginRight: 10 }} />
+ <TextInput
  value={search}
  onChangeText={setSearch}
- placeholder="Search by name or code"
- filterCount={filterCount}
- onOpenFilters={() => setShowFilters(true)}
- summary={filterSummary(filteredSubjects.length, filters)}
- onShowAll={() => { setChosenFilters(NO_FILTERS); setSearch(''); }}
+ placeholder="Search all subjects by name or code"
+ placeholderTextColor={colors.subtle}
+ selectionColor={colors.primary}
+ autoCapitalize="none"
+ autoCorrect={false}
+ returnKeyType="search"
+ className="flex-1 text-light-text font-medium text-[15px] h-full"
  />
+ {search ? (
+ <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear search">
+ <Ionicons name="close-circle" size={18} color={colors.subtle} />
+ </TouchableOpacity>
+ ) : null}
+ </View>
+
+ {searching && (
+ <Text className="text-light-muted text-xs font-semibold mt-3">
+ {filteredSubjects.length} {filteredSubjects.length === 1 ? 'subject' : 'subjects'} found in all years
+ </Text>
+ )}
+
+ {showFacultyYearCards && (
+ <View>
+ <SectionLabel className="px-1 mt-5 mb-3">ACADEMIC YEARS</SectionLabel>
+ {facultyGroups.map((group) => (
+ <AcademicYearCard
+ key={group.key}
+ label={group.label}
+ subjectCount={group.subjects.length}
+ odd={group.counts.Odd}
+ even={group.counts.Even}
+ isCurrent={group.key === currentAcademicYear()}
+ live={liveSubjectId !== null && group.subjects.some((s) => s.id === liveSubjectId)}
+ onPress={() => { setFacultyYear(group.key); setFacultyTerm(undefined); setFacultyType(null); }}
+ />
+ ))}
+ </View>
+ )}
+
+ {facultyGroup && !searching && (
+ <View className="mt-4">
+ {facultyGroups.length > 1 && (
+ <TouchableOpacity
+ onPress={() => setFacultyYear(null)}
+ activeOpacity={0.7}
+ accessibilityRole="button"
+ accessibilityLabel="Back to all academic years"
+ className="flex-row items-center self-start mb-2 -ml-1 pr-3 h-9"
+ >
+ <Ionicons name="chevron-back" size={18} color={colors.primary} />
+ <Text className="text-primary font-bold text-sm">All years</Text>
+ </TouchableOpacity>
+ )}
+ <Text className="text-light-text text-xl font-extrabold mb-3">
+ {facultyGroup.key === OTHER_YEAR ? 'Other subjects' : facultyGroup.label}
+ </Text>
+ {facultyTermsHere.length > 1 && (
+ <SegmentedControl
+ options={facultyTermsHere.map((t) => ({ key: t ?? 'none', label: t ? `${t} semester` : 'No semester' }))}
+ value={facultyActiveTerm ?? 'none'}
+ onChange={(key) => { setFacultyTerm(key === 'none' ? null : (key as Term)); setFacultyType(null); }}
+ />
+ )}
+ {theoryCount > 0 && practicalCount > 0 && (
+ <View className="flex-row mt-3">
+ <Chip
+ label={`Theory · ${theoryCount}`}
+ selected={facultyType === 'theory'}
+ onPress={() => setFacultyType(facultyType === 'theory' ? null : 'theory')}
+ className="mr-2"
+ />
+ <Chip
+ label={`Practical · ${practicalCount}`}
+ selected={facultyType === 'practical'}
+ onPress={() => setFacultyType(facultyType === 'practical' ? null : 'practical')}
+ />
+ </View>
+ )}
+ </View>
+ )}
  </View>
  )}
 
@@ -576,7 +717,7 @@ export default function HomeScreen() {
  </TouchableOpacity>
  )}
  <Text className="text-light-text text-xl font-extrabold mb-3">
- {studentYear.key === OTHER_YEAR ? 'Other classes' : studentYear.label}
+ {studentYear.key === OTHER_YEAR ? 'Other subjects' : studentYear.label}
  </Text>
  {termsHere.length > 1 && (
  <SegmentedControl
@@ -592,24 +733,24 @@ export default function HomeScreen() {
  )}
 
  {!isFaculty && filteredSubjects.length > 0 && (
- <SectionLabel className="px-5 mt-5">YOUR CLASSES</SectionLabel>
+ <SectionLabel className="px-5 mt-5">YOUR SUBJECTS</SectionLabel>
  )}
  </View>
  }
  ListEmptyComponent={
- showYearCards ? null :
+ (showYearCards || showFacultyYearCards) ? null :
  isFaculty && subjects.length > 0 ? (
  <View className="px-4">
  <EmptyState
  icon="search-outline"
  title="No subjects match"
- text={search ? `Nothing found for "${search.trim()}" with these filters.` : 'No subjects fit the filters you picked.'}
+ text={searching ? `Nothing found for "${search.trim()}".` : 'No subjects of this type in this semester.'}
  action={
  <Button
- title="Clear filters"
+ title={searching ? 'Clear search' : 'Show all types'}
  variant="outline"
  icon="close"
- onPress={() => { setChosenFilters(NO_FILTERS); setSearch(''); }}
+ onPress={() => { setSearch(''); setFacultyType(null); }}
  />
  }
  />
@@ -617,19 +758,19 @@ export default function HomeScreen() {
  ) :
  studentYear ? (
  <View className="px-4">
- <EmptyState icon="book-outline" text={`No ${activeTerm ? activeTerm + ' semester ' : ''}classes in this year yet.`} />
+ <EmptyState icon="book-outline" text={`No ${activeTerm ? activeTerm + ' semester ' : ''}subjects in this year yet.`} />
  </View>
  ) :
  <View className="flex-1 justify-center px-4">
  <EmptyState
  icon={isFaculty ? 'school-outline' : 'book-outline'}
- title={isFaculty ? 'No subjects yet' : 'No classes yet'}
+ title={isFaculty ? 'No subjects yet' : 'No subjects yet'}
  text={isFaculty
  ? 'Create a subject, then share its code with your students so they can enroll.'
  : 'Enter the subject code from your faculty to start tracking your attendance.'}
  action={
  <Button
- title={isFaculty ? 'Create Subject' : 'Enroll in a Class'}
+ title={isFaculty ? 'Create Subject' : 'Enroll in a Subject'}
  onPress={openAddModal}
  icon={isFaculty ? 'add' : 'enter-outline'}
  />
@@ -655,14 +796,7 @@ export default function HomeScreen() {
  />
 
  {/* Modals */}
- <ClassFilterSheet
- visible={showFilters}
- onClose={() => setShowFilters(false)}
- filters={filters}
- onChange={setChosenFilters}
- years={yearChoices(subjects)}
- counts={{ all: subjects.length, theory: categories[1].count, practical: categories[2].count }}
- />
+ 
 
  <CreateSubjectModal
  visible={showCreateModal}
@@ -681,6 +815,7 @@ export default function HomeScreen() {
  subjectName={facultyActiveSession?.subjectName || ''}
  correctCode={facultyActiveSession?.correctCode || ''}
  presentCount={liveCount && liveCount.sessionId === Number(facultyActiveSession?.id) ? liveCount.presentCount : 0}
+ totalEnrolled={sessionRoster?.filter((s) => s.status === 'APPROVED').length ?? 0}
  sessionKey={facultyActiveSession?.id}
  duration={facultyActiveSession?.windowSeconds || 15}
  ending={isEndingSession}

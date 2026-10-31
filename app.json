@@ -2,15 +2,15 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/adaptive-foreground.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F7F9FC"
+      "backgroundColor": "#1E6FEA"
     },
     "ios": {
       "supportsTablet": false,
@@ -21,8 +21,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#F7F9FC"
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundImage": "./assets/adaptive-background.png",
+        "backgroundColor": "#1E6FEA"
       },
       "package": "com.suyashpatil.attendance",
       "blockedPermissions": [

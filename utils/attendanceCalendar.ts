@@ -1,3 +1,5 @@
+import { semesterBounds, type Term } from './academicYear';
+
 /** `excused` = every class that day was excused by approved leave */
 export type DayState = 'present' | 'absent' | 'mixed' | 'excused';
 
@@ -33,17 +35,14 @@ function startOfDay(date: Date): Date {
 }
 
 /**
- * The dates a semester scope covers: Odd is 1 June to 31 December, Even is 1 January to 31 May of the following
- * year, and a bare academic year is the two together. "All time" and "Other" have no single range.
+ * The dates a semester scope covers, taken from the semester months in Settings (standard: Odd 1 June to 31 December,
+ * Even 1 January to 31 May). A bare academic year is the two together. "All time" and "Other" have no single range.
  */
 export function semesterRange(scopeKey: string): DateRange | null {
   const match = /^(\d{4})-\d{2}(?: (Odd|Even))?$/.exec(scopeKey);
   if (!match) return null;
 
-  const startYear = Number(match[1]);
-  if (match[2] === 'Odd') return { start: new Date(startYear, 5, 1), end: new Date(startYear, 11, 31) };
-  if (match[2] === 'Even') return { start: new Date(startYear + 1, 0, 1), end: new Date(startYear + 1, 4, 31) };
-  return { start: new Date(startYear, 5, 1), end: new Date(startYear + 1, 4, 31) };
+  return semesterBounds(Number(match[1]), (match[2] as Term | undefined) ?? null);
 }
 
 /** Every class record of the chosen subjects grouped by day, with the day's overall state. */

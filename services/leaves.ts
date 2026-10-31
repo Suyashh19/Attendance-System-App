@@ -26,6 +26,12 @@ export async function cancelLeave(id: number): Promise<void> {
   await api.delete(API_ROUTES.LEAVES.CANCEL(id));
 }
 
+/** Faculty: every waiting request across all their subjects, oldest first. */
+export async function getPendingLeaves(): Promise<LeaveRequest[]> {
+  const { data } = await api.get(API_ROUTES.LEAVES.PENDING);
+  return data.leaves;
+}
+
 /** Faculty: a subject's requests, waiting ones first. */
 export async function getSubjectLeaves(subjectId: number): Promise<{ leaves: LeaveRequest[]; pending: number }> {
   const { data } = await api.get(API_ROUTES.LEAVES.BY_SUBJECT(subjectId));

@@ -18,6 +18,8 @@ interface ClassFilterSheetProps {
   counts: { all: number; theory: number; practical: number };
   /** Recent classes: the faculty's subjects, offered as a "Subject" filter */
   subjects?: { id: number; name: string; code: string; type: string }[];
+  /** The year and semester are chosen elsewhere (the semester switcher), so leave them out of the sheet */
+  hideSemester?: boolean;
 }
 
 const MAX_CHIP_NAME = 24;
@@ -39,7 +41,7 @@ const TERM_OPTIONS = [
 ];
 
 /** Type, academic year and semester filters for the faculty's Classes list. Changes apply as they are made. */
-export function ClassFilterSheet({ visible, onClose, filters, onChange, years, counts, subjects }: ClassFilterSheetProps) {
+export function ClassFilterSheet({ visible, onClose, filters, onChange, years, counts, subjects, hideSemester }: ClassFilterSheetProps) {
   const typeOptions = [
     { key: 'all', label: 'All', badge: undefined },
     { key: 'theory', label: 'Theory', badge: undefined },
@@ -60,7 +62,7 @@ export function ClassFilterSheet({ visible, onClose, filters, onChange, years, c
         className="mb-5"
       />
 
-      {years.length > 0 && (
+      {!hideSemester && years.length > 0 && (
         <>
           <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year</Text>
           <View className="flex-row flex-wrap mb-3">
@@ -96,13 +98,17 @@ export function ClassFilterSheet({ visible, onClose, filters, onChange, years, c
         </>
       )}
 
-      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Semester</Text>
-      <SegmentedControl
-        options={TERM_OPTIONS}
-        value={filters.term ?? 'all'}
-        onChange={(key) => onChange({ ...filters, term: key === 'all' ? null : (key as Term) })}
-        className="mb-6"
-      />
+      {!hideSemester && (
+        <>
+          <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Semester</Text>
+          <SegmentedControl
+            options={TERM_OPTIONS}
+            value={filters.term ?? 'all'}
+            onChange={(key) => onChange({ ...filters, term: key === 'all' ? null : (key as Term) })}
+            className="mb-6"
+          />
+        </>
+      )}
 
       <View className="flex-row">
         <Button

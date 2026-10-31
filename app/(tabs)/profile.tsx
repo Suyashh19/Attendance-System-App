@@ -1,22 +1,27 @@
 import React, { useState } from 'react';
-import { View, ScrollView, TouchableOpacity } from 'react-native';
+import { View, ScrollView, Linking } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { useAuthStore } from '../../store/authStore';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeviceId } from '../../hooks/useDeviceId';
-import { updatePrn, deleteAccount, requestPasswordChange, confirmPasswordChange, requestDeviceChange, confirmDeviceChange } from '../../services/auth';
+import { updatePrn, deleteAccount, requestDeviceChange, confirmDeviceChange } from '../../services/auth';
 import { maskEmail } from '../../utils/maskEmail';
-import { getErrorMessage } from '../../services/api';
+import { getErrorMessage, SERVER_URL } from '../../services/api';
 import { colors } from '../../constants/theme';
 import { Text } from '../../components/Text';
 import { Hero } from '../../components/Hero';
 import { Card } from '../../components/Card';
 import { BottomSheet } from '../../components/BottomSheet';
 import { SectionLabel } from '../../components/EmptyState';
+import { SettingsRow } from '../../components/SettingsRow';
+
+// Shown in the Help section as "Contact support"
+const SUPPORT_EMAIL = 'spgroup177@gmail.com';
 
 export default function ProfileScreen() {
  const { user, logout, setUser } = useAuthStore();
@@ -26,14 +31,6 @@ export default function ProfileScreen() {
  
  const [prnInput, setPrnInput] = useState('');
  const [isUpdating, setIsUpdating] = useState(false);
-
- // Password Modal State
- const [isPasswordModalVisible, setPasswordModalVisible] = useState(false);
- const [passwordOtp, setPasswordOtp] = useState('');
- const [isRequestingPasswordOtp, setIsRequestingPasswordOtp] = useState(false);
- const [newPassword, setNewPassword] = useState('');
- const [confirmPassword, setConfirmPassword] = useState('');
- const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
  // Delete Account State
  const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -62,6 +59,14 @@ export default function ProfileScreen() {
  },
  ]
  );
+ };
+
+ const openLink = async (url: string) => {
+   try {
+     await Linking.openURL(url);
+   } catch {
+     showAlert('Could not open', 'Please try again, or copy the address into your browser.');
+   }
  };
 
  const handleUpdatePrn = async () => {
@@ -131,70 +136,6 @@ export default function ProfileScreen() {
  } finally {
  setIsConfirmingDevice(false);
  }
- };
-
- // Asks first, then emails a code to the registered address. The user never types an email.
- const handleStartPasswordChange = () => {
-   showAlert(
-     'Change password?',
-     `We will email a 6-digit code to ${maskEmail(user?.email)} to confirm it is you.`,
-     [
-       { text: 'Cancel', style: 'cancel' },
-       { text: 'Send code', onPress: () => sendPasswordCode(true) },
-     ]
-   );
- };
-
- const sendPasswordCode = async (openSheet: boolean) => {
-   try {
-     setIsRequestingPasswordOtp(true);
-     await requestPasswordChange();
-     setPasswordOtp('');
-     if (openSheet) {
-       setNewPassword('');
-       setConfirmPassword('');
-       setPasswordModalVisible(true);
-     } else {
-       showAlert('Code Sent', `A new code is on its way to ${maskEmail(user?.email)}.`);
-     }
-   } catch (err: any) {
-     showAlert('Could not send code', getErrorMessage(err, 'Please try again.'));
-   } finally {
-     setIsRequestingPasswordOtp(false);
-   }
- };
-
- const handleUpdatePassword = async () => {
-   if (passwordOtp.trim().length !== 6) {
-     showAlert('Error', 'Enter the 6-digit code from your email.');
-     return;
-   }
-   if (!newPassword || !confirmPassword) {
-     showAlert('Error', 'Enter and confirm your new password.');
-     return;
-   }
-   if (newPassword.length < 6) {
-     showAlert('Error', 'New password must be at least 6 characters.');
-     return;
-   }
-   if (newPassword !== confirmPassword) {
-     showAlert('Error', 'New passwords do not match.');
-     return;
-   }
-
-   try {
-     setIsUpdatingPassword(true);
-     const res = await confirmPasswordChange({ otp: passwordOtp.trim(), newPassword });
-     showAlert('Success', res.message || 'Password updated successfully.');
-     setPasswordModalVisible(false);
-     setPasswordOtp('');
-     setNewPassword('');
-     setConfirmPassword('');
-   } catch (err: any) {
-     showAlert('Could not update password', getErrorMessage(err, 'Please try again.'));
-   } finally {
-     setIsUpdatingPassword(false);
-   }
  };
 
  // Opens the password sheet: deleting needs the account password, not just a tap
@@ -317,17 +258,21 @@ export default function ProfileScreen() {
  </View>
  )}
 
+ {user?.role === 'student' && (
  <View className="p-4 flex-row items-start">
  <View className="w-11 h-11 rounded-2xl bg-light-primaryBg items-center justify-center mr-4">
  <Ionicons name="hardware-chip" size={20} color={colors.primary} />
  </View>
  <View className="flex-1">
- <Text className="text-light-muted text-[11px] font-bold tracking-widest mb-1">SECURE DEVICE ID</Text>
- <Text className="text-light-text font-mono text-xs" numberOfLines={1}>
- {deviceId || 'Loading...'}
- </Text>
+ <Text className="text-light-muted text-[11px] font-bold tracking-widest mb-1">LINKED PHONE</Text>
+ <Text className="text-light-text font-semibold text-sm">
+   {!deviceId ? 'Checking this phone...' : isOnDifferentDevice ? "Not the phone linked to your account" : 'This phone is linked to your account'}
+   </Text>
+   {deviceId ? (
+   <Text className="text-light-subtle font-mono text-[10px] mt-1">Ref ...{deviceId.slice(-6)}</Text>
+   ) : null}
  <Text className="text-light-muted flex-wrap text-xs leading-[18px] mt-2">
- This ID binds your attendance to this physical device to prevent proxy fraud.
+ Attendance can only be marked from the phone linked to your account. This stops anyone else marking it for you.
  </Text>
 
  {isOnDifferentDevice && (
@@ -347,16 +292,17 @@ export default function ProfileScreen() {
  )}
  </View>
  </View>
+ )}
 
  </Card>
 
  <SectionLabel className="mb-3 ml-1">ACCOUNT</SectionLabel>
  <Card className="overflow-hidden mb-6">
  <SettingsRow
- icon="lock-closed"
- title="Update Password"
- subtitle="Change the password you sign in with"
- onPress={handleStartPasswordChange}
+ icon="settings"
+ title="Settings"
+ subtitle={user?.role === 'faculty' ? 'Password, semester months and preferences' : 'Password and account security'}
+ onPress={() => router.push('/settings' as any)}
  divider
  />
  <SettingsRow
@@ -364,6 +310,23 @@ export default function ProfileScreen() {
  title="Sign Out"
  subtitle="You will need to sign in again"
  onPress={handleLogout}
+ />
+ </Card>
+
+ <SectionLabel className="mb-3 ml-1">HELP</SectionLabel>
+ <Card className="overflow-hidden mb-6">
+ <SettingsRow
+ icon="help-buoy"
+ title="Contact support"
+ subtitle="Email us if something is not working"
+ onPress={() => openLink(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Attendance System help')}`)}
+ divider
+ />
+ <SettingsRow
+ icon="shield-checkmark"
+ title="Privacy policy"
+ subtitle="How your data is used"
+ onPress={() => openLink(`${SERVER_URL}/privacy`)}
  />
  </Card>
 
@@ -379,7 +342,7 @@ export default function ProfileScreen() {
  </Card>
 
  <Text className="text-center text-light-subtle text-xs font-medium mt-8">
- Attendance System v1.2.0
+ Attendance System v{Constants.expoConfig?.version ?? '1.2.1'}
  </Text>
  </View>
 
@@ -388,7 +351,7 @@ export default function ProfileScreen() {
  visible={isDeviceModalVisible}
  onClose={() => setDeviceModalVisible(false)}
  title="Link This Phone"
- subtitle={`Enter the 6-digit code sent to ${user?.email}. Your old phone will no longer be able to mark attendance.`}
+ subtitle={`Enter the 6-digit code sent to ${maskEmail(user?.email)}. Your old phone will no longer be able to mark attendance.`}
  >
  <Input
  label="Verification Code"
@@ -404,56 +367,6 @@ export default function ProfileScreen() {
  icon="phone-portrait-outline"
  onPress={handleConfirmDeviceChange}
  loading={isConfirmingDevice}
- className="mt-2"
- />
- </BottomSheet>
-
- {/* Update Password Modal */}
- <BottomSheet
- visible={isPasswordModalVisible}
- onClose={() => setPasswordModalVisible(false)}
- title="Update Password"
- subtitle={`Enter the code we emailed to ${maskEmail(user?.email)}, then choose a new password.`}
- >
- <Input
- label="6-digit code"
- placeholder="123456"
- icon="mail-outline"
- keyboardType="number-pad"
- maxLength={6}
- value={passwordOtp}
- onChangeText={(t) => setPasswordOtp(t.replace(/\D/g, ''))}
- />
- <TouchableOpacity
- onPress={() => sendPasswordCode(false)}
- disabled={isRequestingPasswordOtp}
- hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
- className="mt-[-8px] mb-4 self-end"
- >
- <Text className="text-primary font-semibold text-xs">
- {isRequestingPasswordOtp ? 'Sending...' : 'Resend code'}
- </Text>
- </TouchableOpacity>
- <Input
- label="New Password"
- secureTextEntry
- icon="key-outline"
- value={newPassword}
- onChangeText={setNewPassword}
- />
- <Input
- label="Confirm New Password"
- secureTextEntry
- icon="shield-checkmark-outline"
- value={confirmPassword}
- onChangeText={setConfirmPassword}
- error={confirmPassword && newPassword !== confirmPassword ? "Passwords do not match" : undefined}
- />
-
- <Button
- title="Save Password"
- onPress={handleUpdatePassword}
- loading={isUpdatingPassword}
  className="mt-2"
  />
  </BottomSheet>
@@ -483,32 +396,3 @@ export default function ProfileScreen() {
  );
 }
 
-/** One tappable line in a settings card: icon, title, a short explanation and a chevron. */
-function SettingsRow({ icon, title, subtitle, onPress, tone = 'default', divider = false }: {
- icon: keyof typeof Ionicons.glyphMap;
- title: string;
- subtitle: string;
- onPress: () => void;
- tone?: 'default' | 'danger';
- divider?: boolean;
-}) {
- const danger = tone === 'danger';
- return (
- <TouchableOpacity
- onPress={onPress}
- activeOpacity={0.7}
- accessibilityRole="button"
- accessibilityLabel={title}
- className={`p-4 flex-row items-center ${divider ? 'border-b border-light-border' : ''}`}
- >
- <View className={`w-11 h-11 rounded-2xl items-center justify-center mr-4 ${danger ? 'bg-danger-bg' : 'bg-light'}`}>
- <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.text} />
- </View>
- <View className="flex-1">
- <Text className={`font-bold text-[15px] ${danger ? 'text-danger' : 'text-light-text'}`}>{title}</Text>
- <Text className={`text-xs font-medium mt-0.5 ${danger ? 'text-danger/70' : 'text-light-muted'}`}>{subtitle}</Text>
- </View>
- <Ionicons name="chevron-forward" size={18} color={danger ? colors.danger : colors.subtle} />
- </TouchableOpacity>
- );
-}

@@ -95,7 +95,7 @@ export default function LeaveScreen() {
 
   const openForm = () => {
     if (approvedSubjects.length === 0) {
-      showAlert('No classes yet', 'Join a class and wait for approval before applying for leave.');
+      showAlert('No subjects yet', 'Join a subject and wait for approval before applying for leave.');
       return;
     }
     setShowForm(true);

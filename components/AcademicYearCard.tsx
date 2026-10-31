@@ -15,11 +15,13 @@ interface AcademicYearCardProps {
   /** Present and total classes across the year's approved subjects, if known */
   attendance?: { present: number; total: number };
   isCurrent: boolean;
+  /** A session is running in this year (faculty) */
+  live?: boolean;
   onPress: () => void;
 }
 
 /** One academic year on the student's Classes tab. Tapping it opens the year's subjects. */
-export function AcademicYearCard({ label, subjectCount, odd, even, attendance, isCurrent, onPress }: AcademicYearCardProps) {
+export function AcademicYearCard({ label, subjectCount, odd, even, attendance, isCurrent, live, onPress }: AcademicYearCardProps) {
   const percentage = attendance && attendance.total > 0
     ? Math.round((attendance.present / attendance.total) * 100)
     : null;
@@ -47,6 +49,12 @@ export function AcademicYearCard({ label, subjectCount, odd, even, attendance, i
             {isCurrent && (
               <View className="ml-2 bg-light-primaryBg px-2 py-0.5 rounded-md">
                 <Text className="text-primary text-[10px] font-bold tracking-wide">CURRENT</Text>
+              </View>
+            )}
+            {live && (
+              <View className="ml-2 bg-success-bg px-2 py-0.5 rounded-md flex-row items-center">
+                <View className="w-1.5 h-1.5 rounded-full bg-success mr-1" />
+                <Text className="text-success text-[10px] font-bold tracking-wide">LIVE</Text>
               </View>
             )}
           </View>

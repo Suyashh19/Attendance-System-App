@@ -71,6 +71,7 @@ export default function TabLayout() {
     onLeaveUpdated: () => {
       queryClient.invalidateQueries({ queryKey: ['my-leaves'] });
       queryClient.invalidateQueries({ queryKey: ['subject-leaves'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-leaves'] });
       queryClient.invalidateQueries({ queryKey: ['history'] });
     },
   });
@@ -86,7 +87,7 @@ export default function TabLayout() {
           <Tabs.Screen
             name="home"
             options={{
-              title: 'Classes',
+              title: 'Subjects',
               tabBarIcon: ({ color, focused, size }) => <Ionicons name={focused ? 'library' : 'library-outline'} size={size} color={color} />,
             }}
           />

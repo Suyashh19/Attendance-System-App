@@ -217,10 +217,11 @@ export default function RegisterScreen() {
      <Input
      label="Enter OTP"
      placeholder="6-digit code"
-     keyboardType="numeric"
+     keyboardType="number-pad"
+     maxLength={6}
      icon="keypad-outline"
      onBlur={onBlur}
-     onChangeText={onChange}
+     onChangeText={(t) => onChange(t.replace(/\D/g, '').slice(0, 6))}
      value={value}
      error={errors.otp?.message}
      />
@@ -240,6 +241,13 @@ export default function RegisterScreen() {
        <Text className={`font-semibold ${cooldown > 0 ? "text-light-muted" : "text-primary"}`}>
          {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
        </Text>
+     </TouchableOpacity>
+     <TouchableOpacity
+       className="items-center p-2"
+       onPress={() => { setValue('otp', ''); setStep('email'); }}
+       disabled={loading}
+     >
+       <Text className="font-semibold text-light-muted">Use a different email</Text>
      </TouchableOpacity>
    </>
  )}

@@ -36,7 +36,7 @@ export const EnrollModal = memo(({ visible, onClose, onSuccess }: EnrollModalPro
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Enroll in a class"
+      title="Enroll in a subject"
       subtitle="Enter the subject code provided by your faculty."
     >
       <TextInput

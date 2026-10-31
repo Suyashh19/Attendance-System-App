@@ -85,6 +85,12 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
       return;
     }
 
+    const hasOldLabel = !!subject?.span && !parseSpan(subject.span);
+    if (!values.year && !hasOldLabel) {
+      showAlert('Pick an academic year', 'Choose the academic year this subject belongs to.');
+      return;
+    }
+
     const span = values.year ? formatSpan(values.year, values.term) : '';
 
     try {
@@ -123,7 +129,7 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
 
   const title = editing ? 'Edit subject' : prefill ? 'Duplicate subject' : 'New subject';
   const subtitle = editing
-    ? 'Students already in the class stay enrolled.'
+    ? 'Students already in the subject stay enrolled.'
     : prefill
       ? 'Give the copy a new code and check its academic year. It starts with no students.'
       : 'Students enroll with the subject code you set here.';
@@ -146,15 +152,14 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
         autoCapitalize="characters"
         autoCorrect={false}
       />
-      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year (optional)</Text>
+      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
         {yearOptions.map((year) => (
           <Chip
             key={year}
             label={year === currentAcademicYear() ? `${year} · Current` : year}
             selected={values.year === year}
-            // Tapping the chosen year again clears it
-            onPress={() => setValues({ ...values, year: values.year === year ? '' : year })}
+            onPress={() => setValues({ ...values, year })}
             className="mr-2"
           />
         ))}

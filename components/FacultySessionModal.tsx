@@ -13,6 +13,8 @@ interface FacultySessionModalProps {
   subjectName: string;
   correctCode: string;
   presentCount?: number;
+  /** Approved students in the class; draws one square for each */
+  totalEnrolled?: number;
   /** Seconds the attendance window stays open (from the server) */
   duration?: number;
   /** Changes for every new session so the countdown restarts */
@@ -30,6 +32,7 @@ export function FacultySessionModal({
   subjectName,
   correctCode,
   presentCount = 0,
+  totalEnrolled = 0,
   duration = 15,
   sessionKey,
   ending = false,
@@ -58,6 +61,8 @@ export function FacultySessionModal({
 
   const digits = String(correctCode).split('');
   const digitSize = digits.length <= 4 ? 52 : digits.length <= 6 ? 38 : 26;
+  // Squares shrink for a big class so the whole room stays on screen
+  const seatSize = totalEnrolled > 90 ? 9 : totalEnrolled > 48 ? 12 : 16;
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
@@ -98,8 +103,31 @@ export function FacultySessionModal({
 
             <View className="flex-row items-center bg-success-bg px-4 h-10 rounded-full mt-5">
               <Ionicons name="people" size={16} color={colors.success} style={{ marginRight: 8 }} />
-              <Text className="text-success text-[15px] font-bold">{presentCount} marked present</Text>
+              <Text className="text-success text-[15px] font-bold">
+                {totalEnrolled > 0 ? `${presentCount} of ${totalEnrolled} marked present` : `${presentCount} marked present`}
+              </Text>
             </View>
+
+            {/* The room: one square per enrolled student, filling in as they mark */}
+            {totalEnrolled > 0 && (
+              <View
+                className="flex-row flex-wrap justify-center mt-4 px-2"
+                accessibilityLabel={`${presentCount} of ${totalEnrolled} students present`}
+              >
+                {Array.from({ length: totalEnrolled }, (_, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      width: seatSize,
+                      height: seatSize,
+                      margin: 2.5,
+                      borderRadius: 3,
+                      backgroundColor: i < presentCount ? colors.success : colors.border,
+                    }}
+                  />
+                ))}
+              </View>
+            )}
           </View>
 
           <View className="items-center mt-8">

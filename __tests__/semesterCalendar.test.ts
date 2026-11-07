@@ -119,8 +119,25 @@ describe('parseSettings', () => {
   });
 
   it('reads saved settings back', () => {
-    const saved = { calendar: AUG_START, confirmStart: false, homeStart: 'years' };
+    const saved = { calendar: AUG_START, confirmStart: false, homeStart: 'years', sessionSeconds: 12 };
     expect(parseSettings(JSON.stringify(saved))).toEqual(saved);
+  });
+
+  it('defaults the attendance time to 15 seconds', () => {
+    expect(DEFAULT_SETTINGS.sessionSeconds).toBe(15);
+    expect(parseSettings(JSON.stringify({ confirmStart: false })).sessionSeconds).toBe(15);
+  });
+
+  it('keeps any attendance time from 10 to 15 seconds', () => {
+    for (const seconds of [10, 11, 12, 13, 14, 15]) {
+      expect(parseSettings(JSON.stringify({ sessionSeconds: seconds })).sessionSeconds).toBe(seconds);
+    }
+  });
+
+  it('replaces an attendance time outside 10-15 seconds with 15', () => {
+    for (const bad of [9, 16, 0, 60, 12.5, '12', null]) {
+      expect(parseSettings(JSON.stringify({ sessionSeconds: bad })).sessionSeconds).toBe(15);
+    }
   });
 
   it('replaces an unusable calendar but keeps the other settings', () => {

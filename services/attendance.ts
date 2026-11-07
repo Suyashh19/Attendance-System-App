@@ -79,6 +79,8 @@ interface StartSessionParams {
   date: string;
   startTime: string;
   endTime: string;
+  /** Attendance window length in seconds (10-15); the server uses 15 when it is missing */
+  windowSeconds?: number;
 }
 
 export async function startSession(params: StartSessionParams) {
@@ -86,7 +88,8 @@ export async function startSession(params: StartSessionParams) {
     subjectId: Number(params.subjectId),
     date: params.date,
     startTime: params.startTime,
-    endTime: params.endTime
+    endTime: params.endTime,
+    windowSeconds: params.windowSeconds,
   });
   return data.session;
 }

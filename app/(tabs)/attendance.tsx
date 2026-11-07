@@ -10,6 +10,9 @@ import { submitAttendance } from '../../services/attendance';
 import { getErrorMessage } from '../../services/api';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
+import { useProctoring } from '../../hooks/useProctoring';
+import { isInCall } from '../../modules/call-state';
+import { VIOLATION_MESSAGES, resultAfterViolation } from '../../utils/proctoring';
 
 import { CountdownTimer } from '../../components/CountdownTimer';
 import { AttendanceCodeInput } from '../../components/AttendanceCodeInput';
@@ -18,7 +21,9 @@ import { AttendanceResultModal } from '../../components/AttendanceResultModal';
 import { Text } from '../../components/Text';
 import { Hero } from '../../components/Hero';
 import { Card } from '../../components/Card';
-import type { SessionStartedPayload, VerificationState, AttendanceStatus } from '../../types';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../../constants/theme';
+import type { SessionStartedPayload, VerificationState, AttendanceStatus, Violation } from '../../types';
 
 type SessionState = 'IDLE' | 'ACTIVE' | 'EXPIRED' | 'LOCKED';
 
@@ -71,6 +76,11 @@ export default function AttendanceScreen() {
  const loadedSessionParamRef = useRef<string | null>(null);
  const dismissedRef = useRef(false);
 
+ // Proctoring: the first rule broken in this window, and whether the server has recorded it
+ const [violation, setViolation] = useState<Violation | null>(null);
+ const violationRef = useRef<Violation | null>(null);
+ const violationSentRef = useRef<'idle' | 'sending' | 'done'>('idle');
+
  // ─── 3. Handlers ────────────────────────────────────────────────────────
  const handleTimeComplete = useCallback(() => {
  if (sessionState === 'EXPIRED' || sessionState === 'LOCKED') return;
@@ -105,6 +115,7 @@ export default function AttendanceScreen() {
  setCodeError(undefined); setIsSubmitting(false); setResultStatus(null); setForceRelease(false);
  setResultMessage(undefined);
  setSessionState('IDLE');
+ setViolation(null); violationRef.current = null; violationSentRef.current = 'idle';
   setVerification({ sessionActive: true, deviceMatched: true, timeValid: true, }); // Initial state reset
 
  // --- 2. Initialize New Data ---
@@ -177,6 +188,8 @@ export default function AttendanceScreen() {
  if (!sessionData || dismissedRef.current) return;
  if (String(data.sessionId) !== String(sessionData.sessionId)) return;
 
+ // A PRESENT that crosses with a reported violation must not hide the INVALID
+ if (violationRef.current && data.status === 'PRESENT') return;
  setResultStatus(data.status);
  setResultMessage(data.reason || undefined);
  setIsSubmitting(false);
@@ -222,10 +235,58 @@ export default function AttendanceScreen() {
  }
  }, [resultStatus, resultMessage]);
 
+ // ─── Proctoring ─────────────────────────────────────────────────────────────
+ // Tells the server about the violation; retried when the app comes back if the phone was offline
+ const sendViolation = async () => {
+   const broken = violationRef.current;
+   if (!broken || !sessionData || !deviceId || violationSentRef.current !== 'idle') return;
+   violationSentRef.current = 'sending';
+   try {
+     const result = await submitAttendance({
+       sessionId: sessionData.sessionId,
+       code: code || '',
+       deviceId,
+       violation: broken,
+     });
+     violationSentRef.current = 'done';
+     setResultStatus(resultAfterViolation(result.status, broken) as AttendanceStatus);
+     setResultMessage(result.reason || VIOLATION_MESSAGES[broken]);
+     queryClient.invalidateQueries({ queryKey: ['history'] });
+   } catch (err: any) {
+     // Nothing reached the server: try again the next time the app is in front
+     violationSentRef.current = err?.response ? 'done' : 'idle';
+   }
+ };
+
+ const handleViolation = (broken: Violation) => {
+   if (violationRef.current) return;
+   violationRef.current = broken;
+   setViolation(broken);
+   setIsSubmitting(false);
+   setCodeError(undefined);
+   // Shown straight away; the server's answer replaces it when it arrives
+   setResultStatus('INVALID');
+   setResultMessage(VIOLATION_MESSAGES[broken]);
+   sendViolation();
+ };
+
+ // Watched for the whole window, also after the code was accepted
+ useProctoring({
+   active: !!sessionData && sessionState === 'ACTIVE',
+   onViolation: handleViolation,
+   onResume: sendViolation,
+ });
+
  // ─── 3. Listen for Results via Socket ────────────────────────────────────────
  // ─── Handlers ───────────────────────────────────────────────────────────────
  const handleSubmit = async (submittedCode: string) => {
  if (!sessionData || sessionState !== 'ACTIVE' || isSubmitting || !submittedCode) return;
+ if (violationRef.current) return;
+ // Checked once more at the moment of sending, so a call started a split second ago still counts
+ if (isInCall()) {
+   handleViolation('PHONE_CALL');
+   return;
+ }
 
  if (!deviceId) {
  showAlert('Error', 'Unable to verify device ID. Please restart the app to mark attendance.');
@@ -250,7 +311,8 @@ export default function AttendanceScreen() {
  return;
  }
 
- // Final Result Update
+ // Final Result Update (a violation reported meanwhile wins over PRESENT)
+ if (violationRef.current && result.status === 'PRESENT') return;
  if (result.status) {
  setResultStatus(result.status);
  setResultMessage(result.reason || undefined);
@@ -351,10 +413,16 @@ export default function AttendanceScreen() {
  length={codeLength}
  onChange={setCode}
  onComplete={handleSubmit}
- disabled={sessionState !== 'ACTIVE'}
+ disabled={sessionState !== 'ACTIVE' || !!violation}
  loading={isSubmitting}
  error={codeError}
  />
+ <View className="flex-row items-start bg-warning-bg rounded-2xl px-3 py-2.5 mt-3 mb-1">
+ <Ionicons name="shield-checkmark-outline" size={16} color={colors.warning} style={{ marginRight: 8, marginTop: 1 }} />
+ <Text className="text-warning text-[12px] font-semibold leading-[17px] flex-1">
+ Stay in this app and don't be on a call until the timer ends. Leaving the app or being on a call marks you INVALID.
+ </Text>
+ </View>
  </Card>
 
  {/* Countdown Timer (Synchronized & Immediate) */}

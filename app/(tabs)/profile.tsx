@@ -342,7 +342,7 @@ export default function ProfileScreen() {
  </Card>
 
  <Text className="text-center text-light-subtle text-xs font-medium mt-8">
- Attendance System v{Constants.expoConfig?.version ?? '1.2.1'}
+ Attendance System v{Constants.expoConfig?.version ?? '1.2.3'}
  </Text>
  </View>
 

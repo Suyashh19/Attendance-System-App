@@ -2,7 +2,7 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
@@ -38,7 +38,17 @@
       "expo-router",
       "expo-secure-store",
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class com.worklets.** { *; }\n-keep class com.facebook.jni.** { *; }\n-keepclassmembers class * { @com.facebook.proguard.annotations.DoNotStrip *; }\n-keep @com.facebook.proguard.annotations.DoNotStrip class *"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

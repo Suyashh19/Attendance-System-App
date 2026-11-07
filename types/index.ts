@@ -81,7 +81,12 @@ export interface SubmitAttendancePayload {
   sessionId: string;
   code: string;
   deviceId: string;
+  /** Set when the student took a call or left the app while the window was open */
+  violation?: Violation;
 }
+
+/** Proctoring rule broken during the attendance window; the server marks the student INVALID for it. */
+export type Violation = 'PHONE_CALL' | 'LEFT_APP';
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED' | 'EXCUSED';

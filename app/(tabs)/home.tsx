@@ -51,6 +51,7 @@ export default function HomeScreen() {
  useSettingsStore((s) => s.calendar);
  const confirmStart = useSettingsStore((s) => s.confirmStart);
  const homeStart = useSettingsStore((s) => s.homeStart);
+ const sessionSeconds = useSettingsStore((s) => s.sessionSeconds);
  
  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
  const [activeSessionData, setActiveSessionData] = useState<SessionStartedPayload | null>(null);
@@ -305,7 +306,7 @@ export default function HomeScreen() {
  }
  showAlert(
  'Start Attendance',
- `Start an attendance session for "${subject.name}"?\n\nStudents get a few seconds to type the code you show them, so start only when the class is ready.`,
+ `Start an attendance session for "${subject.name}"?\n\nStudents get ${sessionSeconds} seconds to type the code you show them, so start only when the class is ready.`,
  [
  { text: 'Cancel', style: 'cancel' },
  { text: 'Start', onPress: () => startSessionFor(subject) },
@@ -332,7 +333,8 @@ export default function HomeScreen() {
  subjectId: subject.id,
  date,
  startTime,
- endTime
+ endTime,
+ windowSeconds: sessionSeconds,
  });
  
  // Countdown length comes from the server's window, not a hard-coded number

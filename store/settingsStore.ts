@@ -32,8 +32,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   update: (patch) => {
-    const { calendar, confirmStart, homeStart } = get();
-    const next: AppSettings = { calendar, confirmStart, homeStart, ...patch };
+    const { calendar, confirmStart, homeStart, sessionSeconds } = get();
+    const next: AppSettings = { calendar, confirmStart, homeStart, sessionSeconds, ...patch };
     // The calendar is read by plain functions all over the app, so it is switched before anything re-draws
     setSemesterCalendar(next.calendar);
     set(next);

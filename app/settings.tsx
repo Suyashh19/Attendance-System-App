@@ -12,7 +12,7 @@ import {
   validateCalendar,
   type SemesterCalendar,
 } from '../utils/academicYear';
-import { sameCalendar, type HomeStart } from '../utils/settings';
+import { SESSION_SECONDS_OPTIONS, sameCalendar, type HomeStart } from '../utils/settings';
 import { colors } from '../constants/theme';
 import { BottomSheet } from '../components/BottomSheet';
 import { Button } from '../components/Button';
@@ -41,6 +41,7 @@ export default function SettingsScreen() {
   const saved = useSettingsStore((s) => s.calendar);
   const confirmStart = useSettingsStore((s) => s.confirmStart);
   const homeStart = useSettingsStore((s) => s.homeStart);
+  const sessionSeconds = useSettingsStore((s) => s.sessionSeconds);
   const update = useSettingsStore((s) => s.update);
 
   // Months are edited here and only take effect when saved
@@ -135,6 +136,24 @@ export default function SettingsScreen() {
 
             <SectionLabel className="mt-8 mb-3 ml-1">PREFERENCES</SectionLabel>
             <Card className="overflow-hidden mb-3">
+              <View className="px-4 py-4 border-b border-light-border">
+                <Text className="text-light-text font-semibold text-[15px]">Attendance time</Text>
+                <Text className="text-light-muted text-xs font-medium mt-0.5 mb-3">
+                  How many seconds students get to type the code after you start a session.
+                </Text>
+                <View className="flex-row flex-wrap">
+                  {SESSION_SECONDS_OPTIONS.map((seconds) => (
+                    <Chip
+                      key={seconds}
+                      label={`${seconds}s`}
+                      selected={sessionSeconds === seconds}
+                      onPress={() => update({ sessionSeconds: seconds })}
+                      className="mr-2 mb-2"
+                    />
+                  ))}
+                </View>
+              </View>
+
               <View className="px-4 py-4 flex-row items-center border-b border-light-border">
                 <View className="flex-1 mr-3">
                   <Text className="text-light-text font-semibold text-[15px]">Ask before starting attendance</Text>

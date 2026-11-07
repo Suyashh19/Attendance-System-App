@@ -2,13 +2,13 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/adaptive-foreground.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#1E6FEA"
     },

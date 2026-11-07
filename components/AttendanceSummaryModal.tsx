@@ -1,221 +1,118 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
 import { editAttendanceRecord } from '../services/attendance';
+import { colors } from '../constants/theme';
+import { Button } from './Button';
+import { Text } from './Text';
+import { Avatar } from './Avatar';
+import { BottomSheet } from './BottomSheet';
+import { StatusPill } from './StatusPill';
 
 interface AttendanceSummaryModalProps {
- visible: boolean;
- sessionId: number | null;
- attendances: any[];
- onClose: () => void;
+  visible: boolean;
+  sessionId: number | null;
+  attendances: any[];
+  onClose: () => void;
 }
 
 export function AttendanceSummaryModal({ visible, sessionId, attendances: initialAttendances, onClose }: AttendanceSummaryModalProps) {
- const [attendances, setAttendances] = useState(initialAttendances);
+  const [attendances, setAttendances] = useState(initialAttendances);
 
- // Sync internal state if props change when opening
- React.useEffect(() => {
- if (visible) {
- setAttendances(initialAttendances);
- }
- }, [visible, initialAttendances]);
+  // Sync internal state if props change when opening
+  React.useEffect(() => {
+    if (visible) {
+      setAttendances(initialAttendances);
+    }
+  }, [visible, initialAttendances]);
 
- const { mutate: editStatus, isPending } = useMutation({
- mutationFn: ({ studentId, status }: { studentId: number; status: string }) =>
- editAttendanceRecord(sessionId!, studentId, status,"Manually updated by faculty"),
- onSuccess: (data, variables) => {
- setAttendances(prev => prev.map(a =>
- a.studentId === variables.studentId ? { ...a, status: variables.status, editedByFaculty: true } : a
- ));
- },
- });
+  const { mutate: editStatus, isPending } = useMutation({
+    mutationFn: ({ studentId, status }: { studentId: number; status: string }) =>
+      editAttendanceRecord(sessionId!, studentId, status, "Manually updated by faculty"),
+    onSuccess: (data, variables) => {
+      setAttendances(prev => prev.map(a =>
+        a.studentId === variables.studentId ? { ...a, status: variables.status, editedByFaculty: true } : a
+      ));
+    },
+  });
 
- const getStatusStyle = (status: string) => {
- switch (status) {
- case 'PRESENT': return { bg: '#ECFDF5', text: '#059669' };
- case 'ABSENT': return { bg: '#F7F9FC', text: '#1A1D1F' };
- default: return { bg: '#F7F9FC', text: '#6B7280' };
- }
- };
+  const getNextStatus = (currentStatus: string) => {
+    if (currentStatus === 'PRESENT') return 'ABSENT';
+    if (currentStatus === 'ABSENT') return 'PRESENT';
+    return 'PRESENT'; // default fallback for INVALID
+  };
 
- const getNextStatus = (currentStatus: string) => {
- if (currentStatus === 'PRESENT') return 'ABSENT';
- if (currentStatus === 'ABSENT') return 'PRESENT';
- return 'PRESENT'; // default fallback for INVALID
- };
+  if (!visible) return null;
 
- if (!visible) return null;
+  const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+  const absentCount = attendances.filter(a => a.status === 'ABSENT').length;
 
- const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
- const absentCount = attendances.filter(a => a.status === 'ABSENT').length;
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title="Lecture Summary"
+      subtitle={`${attendances.length} ${attendances.length === 1 ? 'student' : 'students'} in this class`}
+      style={{ height: '88%' }}
+    >
+      <View className="flex-row mb-4">
+        <View className="flex-1 bg-success-bg rounded-2xl p-4 mr-3 flex-row items-center">
+          <View className="w-10 h-10 rounded-xl bg-white items-center justify-center mr-3">
+            <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          </View>
+          <View>
+            <Text className="text-success text-2xl font-extrabold">{presentCount}</Text>
+            <Text className="text-success text-[11px] font-bold tracking-widest">PRESENT</Text>
+          </View>
+        </View>
+        <View className="flex-1 bg-danger-bg rounded-2xl p-4 flex-row items-center">
+          <View className="w-10 h-10 rounded-xl bg-white items-center justify-center mr-3">
+            <Ionicons name="close-circle" size={22} color={colors.danger} />
+          </View>
+          <View>
+            <Text className="text-danger text-2xl font-extrabold">{absentCount}</Text>
+            <Text className="text-danger text-[11px] font-bold tracking-widest">ABSENT</Text>
+          </View>
+        </View>
+      </View>
 
- return (
- <Modal visible={visible} animationType="slide" transparent>
- <View style={styles.overlay}>
- <View style={styles.container}>
- <View style={styles.header}>
- <Text style={styles.title}>Lecture Summary</Text>
- <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
- <Ionicons name="close" size={24} color="#6B7280" />
- </TouchableOpacity>
- </View>
+      <View className="bg-light-primaryBg rounded-2xl px-4 py-3 mb-2 flex-row items-center">
+        <Ionicons name="hand-left-outline" size={16} color={colors.primary} style={{ marginRight: 10 }} />
+        <Text className="text-primary text-[13px] font-medium flex-1 leading-[18px]">
+          Tap the status pill next to any student to toggle their attendance before closing.
+        </Text>
+      </View>
 
- <View style={styles.statsRow}>
- <View style={styles.statBox}>
- <Text style={styles.statValue}>{presentCount}</Text>
- <Text style={styles.statLabel}>PRESENT</Text>
- </View>
- <View style={styles.statBox}>
- <Text style={[styles.statValue, { color: '#1A1D1F' }]}>{absentCount}</Text>
- <Text style={styles.statLabel}>ABSENT</Text>
- </View>
- </View>
+      <FlatList
+        data={attendances}
+        keyExtractor={item => String(item.studentId)}
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        renderItem={({ item }) => (
+          <View className="flex-row items-center py-3 border-b border-light-border">
+            <Avatar name={item.student.name} size={40} />
+            <View className="flex-1 mx-3">
+              <Text className="text-light-text text-[15px] font-bold" numberOfLines={1}>{item.student.name}</Text>
+              <Text className="text-light-muted text-xs font-medium mt-0.5">
+                {item.student.prn || item.student.rollNo || item.student.id}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => editStatus({ studentId: item.studentId, status: getNextStatus(item.status) })}
+              disabled={isPending}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.student.name} is ${item.status}. Tap to change.`}
+              style={{ opacity: isPending ? 0.6 : 1 }}
+            >
+              <StatusPill status={item.status} edited={item.editedByFaculty} />
+            </TouchableOpacity>
+          </View>
+        )}
+      />
 
- <View style={styles.instructionBox}>
- <Text style={styles.instructionText}>
- Tap the status pill next to any student to toggle their attendance before closing.
- </Text>
- </View>
-
- <FlatList
- data={attendances}
- keyExtractor={item => String(item.studentId)}
- style={styles.list}
- renderItem={({ item }) => {
- const statusStyle = getStatusStyle(item.status);
- return (
- <View style={styles.card}>
- <View style={{ flex: 1 }}>
- <Text style={styles.studentName}>{item.student.name}</Text>
- <Text style={styles.studentInfo}>{item.student.prn || item.student.rollNo || item.student.id}</Text>
- </View>
- <TouchableOpacity
- onPress={() => editStatus({ studentId: item.studentId, status: getNextStatus(item.status) })}
- disabled={isPending}
- style={[styles.statusPill, { backgroundColor: statusStyle.bg, borderColor: statusStyle.text + '40' }]}
- >
- <Text style={[styles.statusText, { color: statusStyle.text }]}>
- {item.status}
- </Text>
- {item.editedByFaculty && (
- <Ionicons name="pencil" size={10} color={statusStyle.text} style={{ marginLeft: 4 }} />
- )}
- </TouchableOpacity>
- </View>
- );
- }}
- />
- </View>
- </View>
- </Modal>
- );
+      <Button title="Done" onPress={onClose} className="mt-4" />
+    </BottomSheet>
+  );
 }
-
-const styles = StyleSheet.create({
- overlay: {
- flex: 1,
- backgroundColor: 'rgba(0,0,0,0.4)',
- justifyContent: 'flex-end',
- },
- container: {
- backgroundColor: '#FFFFFF',
- borderTopLeftRadius: 32,
- borderTopRightRadius: 32,
- padding: 24,
- borderWidth: 1,
- borderColor: '#E5EAF2',
- maxHeight: '90%',
- minHeight: '60%',
- // Soft shadow
- shadowColor: "#000",
- shadowOffset: { width: 0, height: -4 },
- shadowOpacity: 0.05,
- shadowRadius: 20,
- elevation: 10,
- },
- header: {
- flexDirection: 'row',
- justifyContent: 'space-between',
- alignItems: 'center',
- marginBottom: 24,
- },
- title: {
- color: '#1A1D1F',
- fontSize: 22,
- fontWeight: 'bold',
- },
- closeBtn: {
- padding: 4,
- },
- statsRow: {
- flexDirection: 'row',
- gap: 16,
- marginBottom: 20,
- },
- statBox: {
- flex: 1,
- backgroundColor: 'rgba(0,0,0,0.02)',
- borderRadius: 16,
- padding: 16,
- alignItems: 'center',
- borderWidth: 1,
- borderColor: '#E5EAF2',
- },
- statValue: {
- color: '#059669',
- fontSize: 24,
- fontWeight: '900',
- },
- statLabel: {
- color: '#6B7280',
- fontSize: 12,
- marginTop: 4,
- letterSpacing: 1,
- },
- instructionBox: {
- backgroundColor: '#EEF2FF',
- borderRadius: 12,
- padding: 12,
- marginBottom: 16,
- },
- instructionText: {
- color: '#6366F1',
- fontSize: 13,
- textAlign: 'center',
- },
- list: {
- flex: 1,
- },
- card: {
- flexDirection: 'row',
- alignItems: 'center',
- justifyContent: 'space-between',
- paddingVertical: 12,
- borderBottomWidth: 1,
- borderBottomColor: '#E5EAF2',
- },
- studentName: {
- color: '#1A1D1F',
- fontSize: 16,
- fontWeight: '600',
- },
- studentInfo: {
- color: '#6B7280',
- fontSize: 13,
- marginTop: 2,
- },
- statusPill: {
- flexDirection: 'row',
- alignItems: 'center',
- paddingHorizontal: 16,
- paddingVertical: 8,
- borderRadius: 99,
- borderWidth: 1,
- },
- statusText: {
- fontSize: 12,
- fontWeight: 'bold',
- letterSpacing: 0.5,
- },
-});

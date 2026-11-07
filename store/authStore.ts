@@ -3,6 +3,26 @@ import * as SecureStore from 'expo-secure-store';
 import type { User, AuthState } from '../types';
 import { storeToken, clearToken, getStoredToken } from '../services/auth';
 import { initSocket, disconnectSocket } from '../services/socket';
+import { setUnauthorizedHandler } from '../services/api';
+import { clearQueryCache } from '../services/queryClient';
+
+// The profile is kept on the phone so the right home screen shows at once,
+// without waiting for /auth/me from a server that may be asleep.
+const USER_KEY = 'auth_user';
+
+function saveUser(user: User | null | undefined): void {
+  if (!user) return;
+  SecureStore.setItemAsync(USER_KEY, JSON.stringify(user)).catch(() => null);
+}
+
+async function loadUser(): Promise<User | null> {
+  try {
+    const raw = await withTimeout(SecureStore.getItemAsync(USER_KEY), ABORT_TIMEOUT);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
 
 const ABORT_TIMEOUT = 3000; // 3 seconds timeout for disk storage
 
@@ -45,11 +65,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       }
     }
 
+    saveUser(finalUser);
     set({ token, user: finalUser, isAuthenticated: true });
   },
 
   logout: async () => {
     await clearToken();
+    await SecureStore.deleteItemAsync(USER_KEY).catch(() => null);
+    await clearQueryCache().catch(() => null);
     disconnectSocket();
     set({ token: null, user: null, isAuthenticated: false, deviceId: null });
   },
@@ -67,6 +90,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       if (token) {
         set({
           token,
+          user: await loadUser(),
           deviceId: deviceId ?? null,
           isAuthenticated: true,
         });
@@ -78,10 +102,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         (async () => {
           try {
             const { getProfile } = await import('../services/auth');
-            const user = await getProfile();
-            set({
-              user: user.user ?? user,
-            });
+            const profile = await getProfile();
+            const user = profile.user ?? profile;
+            saveUser(user);
+            set({ user });
           } catch (err) {
             console.warn('[AuthStore] Background profile update failed:', err);
           }
@@ -94,6 +118,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
   setUser: (user: User) => {
+    saveUser(user);
     set({ user });
   },
 }));
+
+// An expired or revoked token signs the user out instead of leaving every screen failing
+setUnauthorizedHandler(() => {
+  if (useAuthStore.getState().isAuthenticated) {
+    useAuthStore.getState().logout().catch(() => null);
+  }
+});

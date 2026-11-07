@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView, Alert, TouchableOpacity } from 'react-native';
-import { useForm, Controller } from 'react-hook-form';
+import React, { useEffect, useState } from 'react';
+import { View, TouchableOpacity } from 'react-native';
+import { showAlert } from '../../store/dialogStore';
+import { useForm, Controller, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
+import { AuthShell } from '../../components/AuthShell';
+import { Text } from '../../components/Text';
 import { forgotPassword, resetPassword } from '../../services/auth';
 
 const step1Schema = z.object({
@@ -23,14 +26,22 @@ export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<'email' | 'reset'>('email');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const {
     control,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<FormData>({
-    resolver: zodResolver(step === 'email' ? step1Schema : step2Schema),
+    resolver: (step === 'email' ? zodResolver(step1Schema) : zodResolver(step2Schema)) as Resolver<FormData>,
     defaultValues: { email: '', otp: '', newPassword: '' },
   });
 
@@ -38,11 +49,25 @@ export default function ForgotPasswordScreen() {
     try {
       setLoading(true);
       const res = await forgotPassword(data.email);
-      Alert.alert('OTP Sent', res.message || 'Check your email for the OTP.');
+      showAlert('OTP Sent', res.message || 'Check your email for the OTP.');
       setStep('reset');
+      setCooldown(30);
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to send OTP.';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onResend = async () => {
+    try {
+      setLoading(true);
+      await forgotPassword(getValues('email'));
+      setCooldown(30);
+      showAlert('Code sent', 'A new code is on its way to your email.');
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.error || 'Failed to send the code.');
     } finally {
       setLoading(false);
     }
@@ -56,37 +81,33 @@ export default function ForgotPasswordScreen() {
         otp: data.otp,
         newPassword: data.newPassword,
       });
-      Alert.alert('Success', 'Password has been reset successfully.', [
+      showAlert('Success', 'Password has been reset successfully.', [
         { text: 'Login', onPress: () => router.replace('/(auth)/login') },
       ]);
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Failed to reset password.';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView 
-      className="flex-1 bg-light"
-      behavior="padding"
+    <AuthShell
+      title="Reset password"
+      subtitle={
+        step === 'email'
+          ? 'Enter your email to receive a code'
+          : 'Enter the code from your email and a new password'
+      }
+      footer={
+        <View className="flex-row justify-center mt-6">
+          <Link href="/(auth)/login" asChild>
+            <Text className="text-primary font-bold">Back to Login</Text>
+          </Link>
+        </View>
+      }
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View className="flex-1 justify-center px-6 py-12">
-          
-          <View className="mb-8">
-            <Text className="text-3xl font-bold text-light-text mb-2">
-              Reset Password
-            </Text>
-            <Text className="text-light-muted text-base">
-              {step === 'email' 
-                ? "Enter your email to receive an OTP." 
-                : "Enter the OTP sent to your email and your new password."}
-            </Text>
-          </View>
-
-          <View className="bg-light-card shadow-sm p-6 rounded-3xl border border-light-border shadow-md">
             
             <Controller
               control={control}
@@ -109,7 +130,7 @@ export default function ForgotPasswordScreen() {
 
             {step === 'email' ? (
               <Button
-                title="Send Request"
+                title="Send Code"
                 onPress={handleSubmit(onSendOtp)}
                 loading={loading}
                 className="mt-4"
@@ -122,11 +143,12 @@ export default function ForgotPasswordScreen() {
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
                       label="Enter OTP"
-                      placeholder="6-digit code"
-                      keyboardType="numeric"
-                      icon="keypad-outline"
-                      onBlur={onBlur}
-                      onChangeText={onChange}
+     placeholder="6-digit code"
+     keyboardType="number-pad"
+     maxLength={6}
+     icon="keypad-outline"
+     onBlur={onBlur}
+     onChangeText={(t) => onChange(t.replace(/\D/g, '').slice(0, 6))}
                       value={value}
                       error={errors.otp?.message}
                     />
@@ -156,18 +178,20 @@ export default function ForgotPasswordScreen() {
                   loading={loading}
                   className="mt-4"
                 />
+                <TouchableOpacity className="mt-4 items-center p-2" onPress={onResend} disabled={cooldown > 0 || loading}>
+                  <Text className={`font-semibold ${cooldown > 0 ? 'text-light-muted' : 'text-primary'}`}>
+                    {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="items-center p-2"
+                  onPress={() => { setValue('otp', ''); setValue('newPassword', ''); setStep('email'); }}
+                  disabled={loading}
+                >
+                  <Text className="font-semibold text-light-muted">Use a different email</Text>
+                </TouchableOpacity>
               </>
             )}
-          </View>
-
-          <View className="flex-row justify-center mt-8">
-            <Link href="/(auth)/login" asChild>
-              <Text className="text-primary font-bold">Back to Login</Text>
-            </Link>
-          </View>
-
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          </AuthShell>
   );
 }

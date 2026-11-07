@@ -46,10 +46,22 @@ export interface Subject {
   code: string;
   facultyId: number;
   type: 'theory' | 'practical';
+  /** Semester or academic year, e.g. "Sem 5" or "2026-27" (optional) */
+  span?: string | null;
   _count?: {
     enrollments: number;
   };
   enrollmentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** Sent to students only */
+  faculty?: { name: string | null };
+}
+
+/** What deleting a subject would remove, shown in the delete confirmation */
+export interface SubjectSummary {
+  subjectId: number;
+  lectures: number;
+  records: number;
+  students: number;
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -58,9 +70,7 @@ export interface AttendanceSession {
   subjectId: string;
   subjectName: string;
   correctCode: string;
-  options: string[];          // shuffled - includes correct + fakes
-  facultyLatitude: number;
-  facultyLongitude: number;
+  codeLength?: number;        // digits the student has to type
   startTime: string;          // ISO timestamp
   windowSeconds: number;      // 15
   serverTime?: string;        // ISO timestamp
@@ -69,19 +79,16 @@ export interface AttendanceSession {
 // ─── Attendance Submission ────────────────────────────────────────────────────
 export interface SubmitAttendancePayload {
   sessionId: string;
-  selectedCode: string;
+  code: string;
   deviceId: string;
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  isRetry?: boolean;
 }
 
 // ─── Attendance Result ────────────────────────────────────────────────────────
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXPIRED' | 'EXCUSED';
 
 export interface AttendanceResult {
-  status: AttendanceStatus;
+  status: AttendanceStatus | 'WRONG_CODE'; // WRONG_CODE = typo, attempts still left
+  attemptsLeft?: number;
   message?: string;
   reason?: string;
   attendance?: any;
@@ -104,19 +111,16 @@ export interface AttendanceRecord {
 export interface VerificationState {
   sessionActive: boolean | null | 'ready';
   deviceMatched: boolean | null | 'ready';
-  locationVerified: boolean | null | 'ready';
   timeValid: boolean | null | 'ready';
 }
 
 // ─── Socket Events ────────────────────────────────────────────────────────────
 export interface SessionStartedPayload {
+  id?: number;                // REST payloads carry `id` instead of `sessionId`
   sessionId: string;
   subjectId: string;
   subjectName: string;
-  correctCode: string;
-  options: string[];
-  facultyLatitude: number;
-  facultyLongitude: number;
+  codeLength?: number;
   startTime: string;
   windowExpiry: string;
   windowSeconds: number;
@@ -124,14 +128,20 @@ export interface SessionStartedPayload {
 }
 
 export interface SessionEndedPayload {
-  sessionId: string;
-  subjectId: string;
+  sessionId: string | number;
+  subjectId: string | number;
+}
+
+export interface AttendanceCountPayload {
+  sessionId: number;
+  presentCount: number;
 }
 
 export interface AttendanceResultPayload {
   status: AttendanceStatus;
-  sessionId: string;
+  sessionId: string | number;
   message?: string;
+  reason?: string | null;
 }
 
 // ─── API Response Wrapper ─────────────────────────────────────────────────────
@@ -144,7 +154,7 @@ export interface ApiResponse<T = unknown> {
 
 export interface HistoryRecord {
   id: number;
-  status: 'PRESENT' | 'ABSENT' | 'INVALID';
+  status: 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXCUSED';
   date: string;
   reason?: string;
   submittedAt?: string;
@@ -160,6 +170,8 @@ export interface SubjectHistory {
     PRESENT: number;
     ABSENT: number;
     INVALID: number;
+    /** Classes excused by approved leave. They are left out of `total`. */
+    EXCUSED?: number;
     total: number;
   };
 }
@@ -182,7 +194,7 @@ export interface SessionStudentAttendance {
   name: string;
   prn: string | null;
   rollNo: string | null;
-  status: 'PRESENT' | 'ABSENT';
+  status: 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXCUSED';
   reason: string | null;
   editedByFaculty: boolean;
 }
@@ -196,4 +208,58 @@ export interface SessionDetailsResponse {
     subjectType: 'theory' | 'practical';
   };
   students: SessionStudentAttendance[];
+}
+
+// ─── Faculty: one subject's class list ────────────────────────────────────────
+export interface EnrolledStudent {
+  id: number;
+  name: string | null;
+  email: string;
+  prn: string | null;
+  rollNo: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+}
+
+export interface StudentAttendanceSummary {
+  id: number;
+  PRESENT: number;
+  ABSENT: number;
+  INVALID: number;
+  EXCUSED?: number;
+  totalSessions: number;
+  attendancePercentage: string;
+}
+
+export interface SubjectAnalytics {
+  totalSessions: number;
+  summary: StudentAttendanceSummary[];
+}
+
+export interface SubjectSession {
+  id: number;
+  subjectId: number;
+  isActive: boolean;
+  startTime: string;
+  endTime: string | null;
+}
+
+// ─── Leave ────────────────────────────────────────────────────────────────────
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface LeaveRequest {
+  id: number;
+  studentId: number;
+  subjectId: number;
+  /** First and last day of the leave, "YYYY-MM-DD" */
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: LeaveStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  /** Student's own list: which subject */
+  subject?: { id: number; name: string; code: string; type: 'theory' | 'practical' };
+  /** Faculty's list: who asked */
+  student?: { id: number; name: string | null; rollNo: string | null; prn: string | null };
 }

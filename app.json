@@ -2,60 +2,41 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F7F9FC"
+      "backgroundColor": "#1E6FEA"
     },
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We need your location to verify your proximity to the classroom.",
-        "NSLocationAlwaysUsageDescription": "We need your location to verify your proximity to the classroom.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "bundleIdentifier": "com.attendancesystem.app"
+      "bundleIdentifier": "com.suyashpatil.attendance"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#F7F9FC"
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundImage": "./assets/adaptive-background.png",
+        "backgroundColor": "#1E6FEA"
       },
-      "package": "com.attendancesystem.app",
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+      "package": "com.suyashpatil.attendance",
+      "blockedPermissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow Attendance System to use your location to verify classroom proximity."
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/android-icon-monochrome.png",
-          "color": "#6366F1",
-          "defaultChannel": "attendance"
-        }
-      ],
       "expo-font",
       "@react-native-community/datetimepicker"
     ],

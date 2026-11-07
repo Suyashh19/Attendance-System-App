@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import Animated, {
  useSharedValue,
  useAnimatedProps,
@@ -8,14 +8,21 @@ import Animated, {
  interpolateColor,
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
+import { colors } from '../constants/theme';
+import { Text } from './Text';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// Ring colour as time runs out: plenty of time -> hurry -> almost over
+const RING_COLORS = [colors.success, colors.warning, colors.danger];
 
 interface CountdownTimerProps {
  duration: number; // in seconds
  onComplete?: () => void;
  size?: number;
  strokeWidth?: number;
+ /** dark: white numbers, for use on the hero gradient */
+ tone?: 'light' | 'dark';
 }
 
 export function CountdownTimer({
@@ -23,6 +30,7 @@ export function CountdownTimer({
  onComplete,
  size = 120,
  strokeWidth = 8,
+ tone = 'light',
 }: CountdownTimerProps) {
  const radius = (size - strokeWidth) / 2;
  const circumference = radius * 2 * Math.PI;
@@ -89,7 +97,7 @@ export function CountdownTimer({
  const stroke = interpolateColor(
  colorProgress.value,
  [0, 0.5, 1],
- ['#059669', '#6B7280', '#1A1D1F'] // success -> warning -> danger
+ RING_COLORS
  );
 
  return {
@@ -101,13 +109,13 @@ export function CountdownTimer({
  return (
  <View className="items-center justify-center" style={{ width: size, height: size }}>
  <View className="absolute z-10 items-center justify-center">
- <Text className="text-4xl font-bold text-light-text tracking-widest">{timeLeft}</Text>
- <Text className="text-xs text-light-muted font-medium tracking-widest mt-1">SECONDS</Text>
+ <Text className={`text-[40px] font-extrabold ${tone === 'dark' ? 'text-white' : 'text-light-text'}`}>{timeLeft}</Text>
+ <Text className={`text-[10px] font-bold tracking-widest ${tone === 'dark' ? 'text-white/60' : 'text-light-muted'}`}>SECONDS</Text>
  </View>
  <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
  {/* Background track */}
  <Circle
- stroke="#E5EAF2" 
+ stroke={tone === 'dark' ? 'rgba(255, 255, 255, 0.14)' : colors.border}
  fill="none"
  cx={size / 2}
  cy={size / 2}

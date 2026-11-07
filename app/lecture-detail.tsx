@@ -1,145 +1,264 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, FlatList, TouchableOpacity, TextInput, RefreshControl } from 'react-native';
+import { showAlert } from '../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSessionDetails, editAttendanceRecord } from '../services/attendance';
+import type { SessionDetailsResponse } from '../types';
+import { colors, MIN_ATTENDANCE_PERCENT } from '../constants/theme';
+import { StatusPill } from '../components/StatusPill';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { ListSkeleton } from '../components/Skeleton';
+import { Text } from '../components/Text';
+import { Card } from '../components/Card';
+import { Avatar } from '../components/Avatar';
+import { Button } from '../components/Button';
+import { ProgressRing } from '../components/ProgressRing';
+import { EmptyState, SectionLabel } from '../components/EmptyState';
+import { Chip } from '../components/Chip';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function LectureDetailScreen() {
- const { id } = useLocalSearchParams();
- const router = useRouter();
- const queryClient = useQueryClient();
- const insets = useSafeAreaInsets();
- const sessionId = Number(id);
+  const { id } = useLocalSearchParams();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const sessionId = Number(id);
 
- const { data, isLoading, isError, refetch } = useQuery({
- queryKey: ['session-details', sessionId],
- queryFn: () => getSessionDetails(sessionId),
- enabled: !!sessionId,
- });
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['session-details', sessionId],
+    queryFn: () => getSessionDetails(sessionId),
+    enabled: !!sessionId,
+  });
 
- const editMutation = useMutation({
- mutationFn: ({ studentId, status }: { studentId: number, status: string }) => 
- editAttendanceRecord(sessionId, studentId, status),
- onSuccess: () => {
- queryClient.invalidateQueries({ queryKey: ['session-details', sessionId] });
- queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
- },
- onError: (err: any) => {
- Alert.alert('Error', err.response?.data?.error || 'Failed to update attendance');
- }
- });
+  // Students whose change is still on its way to the server; their button waits so taps cannot overlap
+  const [saving, setSaving] = useState<Set<number>>(new Set());
+  const setSavingFor = (studentId: number, on: boolean) =>
+    setSaving((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(studentId);
+      else next.delete(studentId);
+      return next;
+    });
 
- const toggleStatus = (studentId: number, currentStatus: string) => {
- const newStatus = currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
- editMutation.mutate({ studentId, status: newStatus });
- };
+  const detailsKey = ['session-details', sessionId];
 
- if (isLoading) {
- return (
- <View className="flex-1 bg-light items-center justify-center">
- <ActivityIndicator size="large" color="#6366F1" />
- </View>
- );
- }
+  // Finding students quickly: search by name, PRN or roll, and show only the ones that need a look
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'INVALID' | 'ABSENT' | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
- if (isError || !data) {
- return (
- <View className="flex-1 bg-light items-center justify-center p-6">
- <Ionicons name="alert-circle-outline" size={64} color="#1A1D1F" className="mb-4" />
- <Text className="text-light-text text-xl font-bold mb-2">Failed to load details</Text>
- <TouchableOpacity onPress={() => router.back()} className="bg-primary px-6 py-3 rounded-2xl">
- <Text className="text-light-text font-bold">Go Back</Text>
- </TouchableOpacity>
- </View>
- );
- }
+  // The new status shows at once; the server catches up in the background and the old one returns if it refuses
+  const editMutation = useMutation({
+    mutationKey: ['edit-attendance'],
+    mutationFn: ({ studentId, status }: { studentId: number, status: string }) =>
+      editAttendanceRecord(sessionId, studentId, status),
+    onMutate: async ({ studentId, status }) => {
+      setSavingFor(studentId, true);
+      await queryClient.cancelQueries({ queryKey: detailsKey });
+      const previous = queryClient.getQueryData<SessionDetailsResponse>(detailsKey);
+      queryClient.setQueryData<SessionDetailsResponse>(detailsKey, (old) =>
+        old
+          ? {
+              ...old,
+              students: old.students.map((st) =>
+                st.id === studentId ? { ...st, status: status as typeof st.status, editedByFaculty: true, reason: null } : st
+              ),
+            }
+          : old
+      );
+      return { previous };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(detailsKey, context.previous);
+      showAlert('Error', err.response?.data?.error || 'Failed to update attendance');
+    },
+    onSettled: (_data, _err, { studentId }) => {
+      setSavingFor(studentId, false);
+      // Refetch once the last pending change has landed, so an older answer cannot undo a newer tap
+      if (queryClient.isMutating({ mutationKey: ['edit-attendance'] }) <= 1) {
+        queryClient.invalidateQueries({ queryKey: detailsKey });
+      }
+      queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['subject-analytics'] });
+    },
+  });
 
- const { session, students } = data;
+  const toggleStatus = (studentId: number, currentStatus: string, name?: string) => {
+    const newStatus = currentStatus === 'PRESENT' ? 'ABSENT' : 'PRESENT';
+    // An excused student has approved leave: do not overwrite that with a stray tap
+    if (currentStatus === 'EXCUSED') {
+      showAlert(
+        'Student is excused',
+        `${name || 'This student'} has approved leave for this lecture. Mark them present anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Mark present', onPress: () => editMutation.mutate({ studentId, status: 'PRESENT' }) },
+        ]
+      );
+      return;
+    }
+    editMutation.mutate({ studentId, status: newStatus });
+  };
 
- return (
- <View className="flex-1 bg-[#F7F9FC]" style={{ paddingTop: Math.max(insets.top, 45) }}>
- <View className="flex-1 px-4">
- {/* Header Section */}
- <View className="py-2 flex-row items-center">
- <TouchableOpacity 
- onPress={() => router.back()}
- className="w-10 h-10 bg-[#FFFFFF] shadow-sm border border-[#E5EAF2] rounded-full items-center justify-center mr-4"
- >
- <Ionicons name="arrow-back" size={20} color="#1A1D1F" />
- </TouchableOpacity>
- <View className="flex-1">
- <Text className="text-light-text text-2xl font-black" numberOfLines={1}>{session.subjectName}</Text>
- <Text className="text-light-muted font-medium">
- {new Date(session.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
- </Text>
- </View>
- </View>
+  if (isLoading) {
+    return (
+      <View className="flex-1 bg-light">
+        <ScreenHeader title="Lecture" />
+        <ListSkeleton />
+      </View>
+    );
+  }
 
- {/* Stats Card */}
- <View className="bg-light-card shadow-sm border border-light-border p-5 rounded-3xl mb-6 flex-row justify-between items-center ">
- <View>
- <Text className="text-light-muted font-bold text-xs uppercase tracking-widest mb-1">Attendance Rate</Text>
- <Text className="text-light-text text-3xl font-black">
- {Math.round((students.filter(s => s.status === 'PRESENT').length / students.length) * 100)}%
- </Text>
- </View>
- <View className="items-end">
- <Text className="text-success text-2xl font-black">
- {students.filter(s => s.status === 'PRESENT').length}
- <Text className="text-light-muted text-base"> / {students.length}</Text>
- </Text>
- <Text className="text-light-muted text-xs font-bold">STUDENTS PRESENT</Text>
- </View>
- </View>
+  if (isError || !data) {
+    return (
+      <View className="flex-1 bg-light justify-center px-4">
+        <EmptyState
+          icon="alert-circle-outline"
+          tone="danger"
+          title="Failed to load details"
+          text="Check your internet connection and open this lecture again."
+          action={<Button title="Go Back" icon="arrow-back" onPress={() => router.back()} />}
+        />
+      </View>
+    );
+  }
 
- <Text className="text-light-text font-bold text-lg mb-4">Student List</Text>
+  const { session, students } = data;
+  const presentCount = students.filter(s => s.status === 'PRESENT').length;
+  const rate = students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+  const rateTone = rate >= MIN_ATTENDANCE_PERCENT ? colors.success : colors.danger;
 
- <FlatList
- data={students}
- keyExtractor={(item) => String(item.id)}
- contentContainerStyle={{ paddingBottom: 40 }}
- renderItem={({ item }) => (
- <View className="bg-light-card shadow-sm border border-light-border p-4 rounded-2xl mb-3 flex-row justify-between items-center">
- <View className="flex-1">
- <Text className="text-light-text font-bold text-base" numberOfLines={1}>{item.name}</Text>
- <View className="flex-row items-center mt-1">
- {item.rollNo && (
- <View className="bg-light px-2 py-0.5 rounded-md mr-2">
- <Text className="text-light-muted text-[10px] font-bold">Roll: {item.rollNo}</Text>
- </View>
- )}
- {item.prn && (
- <Text className="text-light-muted text-[10px]">PRN: {item.prn}</Text>
- )}
- </View>
- </View>
+  const needle = query.trim().toLowerCase();
+  const shown = students.filter((s) => {
+    if (statusFilter && s.status !== statusFilter) return false;
+    if (!needle) return true;
+    return [s.name, s.prn, s.rollNo].some((v) => v && String(v).toLowerCase().includes(needle));
+  });
+  const invalidCount = students.filter((s) => s.status === 'INVALID').length;
+  const absentCount = students.filter((s) => s.status === 'ABSENT').length;
 
- <TouchableOpacity 
- onPress={() => toggleStatus(item.id, item.status)}
- disabled={editMutation.isPending}
- className={`px-4 py-2 rounded-xl border ${
- item.status === 'PRESENT' 
- ? 'bg-[#ECFDF5] border-[#059669]/30' 
- : 'bg-[#F7F9FC] border-[#E5EAF2]'
- }`}
- >
- <Text className={`font-black text-xs ${
- item.status === 'PRESENT' ? 'text-[#059669]' : 'text-[#6B7280]'
- }`}>
- {item.status}
- </Text>
- </TouchableOpacity>
- </View>
- )}
- ListEmptyComponent={
- <View className="items-center justify-center p-10">
- <Text className="text-light-muted text-center">No students enrolled in this subject.</Text>
- </View>
- }
- />
- </View>
- </View>
- );
+  return (
+    <View className="flex-1 bg-light">
+      <ScreenHeader
+        title={session.subjectName}
+        subtitle={new Date(session.date).toLocaleString('en-GB', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+      />
+
+      <FlatList
+        data={shown}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+        }
+        ListHeaderComponent={
+          <View>
+            {/* Stats Card */}
+            <Card className="p-5 mb-6 flex-row items-center">
+              <ProgressRing percent={rate} size={96} strokeWidth={10} color={rateTone}>
+                <Text className="text-2xl font-extrabold" style={{ color: rateTone }}>{rate}%</Text>
+              </ProgressRing>
+              <View className="flex-1 ml-5">
+                <Text className="text-light-muted font-bold text-xs uppercase tracking-widest mb-1">Attendance Rate</Text>
+                <Text className="text-success text-[28px] font-extrabold">
+                  {presentCount}
+                  <Text className="text-light-muted text-base font-semibold"> / {students.length}</Text>
+                </Text>
+                <Text className="text-light-muted text-[11px] font-bold tracking-wide">STUDENTS PRESENT</Text>
+              </View>
+            </Card>
+
+            {students.length > 0 && (
+              <View className="mb-4">
+                <View className="flex-row items-center bg-light-card border border-light-border rounded-2xl px-4 h-[52px] mb-3">
+                  <Ionicons name="search" size={18} color={colors.subtle} style={{ marginRight: 10 }} />
+                  <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search by name, PRN or roll no."
+                    placeholderTextColor={colors.subtle}
+                    selectionColor={colors.primary}
+                    autoCorrect={false}
+                    className="flex-1 text-light-text font-medium text-[15px] h-full"
+                  />
+                  {query ? (
+                    <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear search">
+                      <Ionicons name="close-circle" size={18} color={colors.subtle} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <View className="flex-row">
+                  <Chip
+                    label={`Needs review · ${invalidCount}`}
+                    icon="alert-circle-outline"
+                    tone="danger"
+                    selected={statusFilter === 'INVALID'}
+                    onPress={() => setStatusFilter(statusFilter === 'INVALID' ? null : 'INVALID')}
+                    className="mr-2"
+                  />
+                  <Chip
+                    label={`Absent · ${absentCount}`}
+                    icon="close-circle-outline"
+                    selected={statusFilter === 'ABSENT'}
+                    onPress={() => setStatusFilter(statusFilter === 'ABSENT' ? null : 'ABSENT')}
+                  />
+                </View>
+              </View>
+            )}
+
+            <SectionLabel className="mb-3 ml-1">STUDENTS · TAP A STATUS TO CHANGE IT</SectionLabel>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <Card className="p-4 mb-3 flex-row items-center">
+            <Avatar name={item.name} size={44} />
+            <View className="flex-1 mx-3">
+              <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>{item.name}</Text>
+              <View className="flex-row items-center mt-1">
+                {item.rollNo && (
+                  <View className="bg-light px-2 py-0.5 rounded-md mr-2">
+                    <Text className="text-light-muted text-[10px] font-bold">Roll: {item.rollNo}</Text>
+                  </View>
+                )}
+                {item.prn && (
+                  <Text className="text-light-muted text-[11px] font-medium">PRN: {item.prn}</Text>
+                )}
+              </View>
+              {item.status === 'INVALID' && item.reason ? (
+                <Text className="text-warning text-[11px] font-medium mt-1" numberOfLines={2}>{item.reason}</Text>
+              ) : item.editedByFaculty ? (
+                <Text className="text-light-muted text-[11px] font-medium mt-1">Edited by you</Text>
+              ) : null}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => toggleStatus(item.id, item.status, item.name)}
+              disabled={saving.has(item.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name} is ${item.status}. Tap to change.`}
+            >
+              <View className="flex-row items-center">
+                <StatusPill status={item.status} edited={item.editedByFaculty} />
+                <Ionicons name="swap-horizontal" size={14} color={colors.subtle} style={{ marginLeft: 6 }} />
+              </View>
+            </TouchableOpacity>
+          </Card>
+        )}
+        ListEmptyComponent={
+          <EmptyState icon="people-outline" text={students.length > 0 ? 'No students match.' : 'No students enrolled in this subject.'} />
+        }
+      />
+    </View>
+  );
 }

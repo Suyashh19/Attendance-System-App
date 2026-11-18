@@ -2,7 +2,7 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
@@ -48,7 +48,8 @@
             "extraProguardRules": "-keep class com.worklets.** { *; }\n-keep class com.facebook.jni.** { *; }\n-keepclassmembers class * { @com.facebook.proguard.annotations.DoNotStrip *; }\n-keep @com.facebook.proguard.annotations.DoNotStrip class *"
           }
         }
-      ]
+      ],
+      "./plugins/with16KbSupport"
     ],
     "experiments": {
       "typedRoutes": true

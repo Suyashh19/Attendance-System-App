@@ -17,6 +17,10 @@ const FAILURE_TITLE = "Couldn't mark attendance";
 // Order matters: the more specific wording is tested first
 const RULES: { test: (reason: string) => boolean; desc: string }[] = [
   {
+    test: (r) => r.includes('split') || r.includes('multi-window') || r.includes('multitask'),
+    desc: 'Split-screen or multitasking was detected during the attendance window. You must use the app in full screen mode.',
+  },
+  {
     test: (r) => r.includes('another user'),
     desc: "This phone is already linked to another student's account. Please speak to your teacher.",
   },

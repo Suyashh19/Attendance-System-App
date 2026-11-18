@@ -27,6 +27,10 @@ describe('friendlyFailure', () => {
     expect(friendlyFailure('Session is no longer active').desc).toMatch(/closed/);
   });
 
+  it('explains a split-screen or multitasking attempt', () => {
+    expect(friendlyFailure('Split-screen or multitasking detected').desc).toMatch(/full screen mode/);
+  });
+
   it('keeps an unknown reason visible instead of hiding it', () => {
     expect(friendlyFailure('Something new from the server').desc).toBe('Reason: Something new from the server');
   });

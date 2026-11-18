@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, ScrollView, BackHandler } from 'react-native';
+import { View, ScrollView, BackHandler, Dimensions, AppState, AppStateStatus, Platform, Keyboard } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -75,6 +75,46 @@ export default function AttendanceScreen() {
  // Which session payload is on screen, and whether its result was already closed by the student
  const loadedSessionParamRef = useRef<string | null>(null);
  const dismissedRef = useRef(false);
+ const isKeyboardVisibleRef = useRef(false);
+
+ useEffect(() => {
+   const showSub = Keyboard.addListener('keyboardDidShow', () => {
+     isKeyboardVisibleRef.current = true;
+   });
+   const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+     isKeyboardVisibleRef.current = false;
+   });
+   return () => {
+     showSub.remove();
+     hideSub.remove();
+   };
+ }, []);
+
+ const isSplitScreenActive = useCallback(() => {
+   if (Platform.OS !== 'android') return false;
+   const window = Dimensions.get('window');
+   const screen = Dimensions.get('screen');
+
+   // Freeform or floating pop-up window (narrower than normal portrait screen)
+   if (screen.width > 0 && window.width / screen.width < 0.90) {
+     return true;
+   }
+
+   // Split-screen: height is constrained without soft keyboard being active
+   if (!isKeyboardVisibleRef.current && screen.height > 0 && window.height / screen.height < 0.72) {
+     return true;
+   }
+
+   return false;
+ }, []);
+
+ const flagSplitScreenAttempt = useCallback((reason: string) => {
+   if (sessionState === 'EXPIRED' || sessionState === 'LOCKED') return;
+   setSessionState('LOCKED');
+   setVerification((prev) => ({ ...prev, sessionActive: false, timeValid: false }));
+   setResultStatus('INVALID');
+   setResultMessage(reason);
+ }, [sessionState]);
 
  // Proctoring: the first rule broken in this window, and whether the server has recorded it
  const [violation, setViolation] = useState<Violation | null>(null);
@@ -277,6 +317,25 @@ export default function AttendanceScreen() {
    onResume: sendViolation,
  });
 
+  // ─── 2.6 Active Split-Screen Guard ─────────────────────────
+  useEffect(() => {
+    if (!sessionData || sessionState !== 'ACTIVE') return;
+
+    if (isSplitScreenActive()) {
+      flagSplitScreenAttempt('Split-screen or multi-window detected. Attendance must be marked in full screen.');
+      return;
+    }
+
+    const dimSub = Dimensions.addEventListener('change', () => {
+      if (sessionState === 'ACTIVE' && isSplitScreenActive()) {
+        flagSplitScreenAttempt('Split-screen or multi-window detected. Attendance must be marked in full screen.');
+      }
+    });
+
+    return () => {
+      dimSub.remove();
+    };
+  }, [sessionData, sessionState, isSplitScreenActive, flagSplitScreenAttempt]);
  // ─── 3. Listen for Results via Socket ────────────────────────────────────────
  // ─── Handlers ───────────────────────────────────────────────────────────────
  const handleSubmit = async (submittedCode: string) => {
@@ -285,6 +344,11 @@ export default function AttendanceScreen() {
  // Checked once more at the moment of sending, so a call started a split second ago still counts
  if (isInCall()) {
    handleViolation('PHONE_CALL');
+   return;
+ }
+
+ if (isSplitScreenActive()) {
+   flagSplitScreenAttempt('Split-screen or multi-window detected. Attendance must be marked in full screen.');
    return;
  }
 

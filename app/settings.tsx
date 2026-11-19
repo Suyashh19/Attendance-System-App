@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../store/dialogStore';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useOnboardingStore } from '../store/onboardingStore';
+import { UnoAvatar } from '../components/onboarding/UnoAvatar';
+import { TourTarget } from '../components/onboarding/TourTarget';
+import { INTERACTIVE_TOUR_STEPS } from '../constants/onboardingTour';
 import {
   DEFAULT_CALENDAR,
   MONTH_NAMES,
@@ -36,7 +41,25 @@ const FIELD_TITLES: Record<Field, string> = {
 /** Account security for everyone; for faculty also the semester months and a few preferences kept on this phone. */
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const isFaculty = useAuthStore((s) => s.user?.role) === 'faculty';
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isFaculty = user?.role === 'faculty';
+  const resetTour = useOnboardingStore((s) => s.resetTour);
+  const openFeatureGuides = useOnboardingStore((s) => s.openFeatureGuides);
+  const isTourActive = useOnboardingStore((s) => s.isActive);
+  const currentStepIndex = useOnboardingStore((s) => s.currentStepIndex);
+
+  const scrollRef = React.useRef<ScrollView>(null);
+  const currentStep = INTERACTIVE_TOUR_STEPS[currentStepIndex];
+
+  React.useEffect(() => {
+    if (!isTourActive) return;
+    if (currentStep?.id === 'settings_attendance_preferences') {
+      scrollRef.current?.scrollTo({ y: 340, animated: true });
+    } else if (currentStep?.id === 'settings_semester_months') {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    }
+  }, [isTourActive, currentStep?.id]);
 
   const saved = useSettingsStore((s) => s.calendar);
   const confirmStart = useSettingsStore((s) => s.confirmStart);
@@ -58,6 +81,11 @@ export default function SettingsScreen() {
     showAlert('Saved', 'The semester months were updated. Your subjects now follow this calendar.');
   };
 
+  const handleRestartTour = async () => {
+    await resetTour(user?.id);
+    router.replace('/(tabs)/home');
+  };
+
   const MonthRow = ({ field, label, last }: { field: Field; label: string; last?: boolean }) => (
     <TouchableOpacity
       onPress={() => setPicking(field)}
@@ -77,6 +105,7 @@ export default function SettingsScreen() {
       <ScreenHeader title="Settings" subtitle={isFaculty ? 'Password, semester months and preferences' : 'Account security'} />
 
       <ScrollView
+        ref={scrollRef}
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
@@ -88,102 +117,145 @@ export default function SettingsScreen() {
 
         {isFaculty && (
           <>
-            <SectionLabel className="mb-1 ml-1">SEMESTER MONTHS</SectionLabel>
-            <Text className="text-light-muted text-[13px] leading-5 ml-1 mb-3">
-              Choose when your college's semesters run. The app uses this to decide which semester is current. Months
-              between the two semesters count as part of the next one.
-            </Text>
-
-            <Card className="overflow-hidden mb-3">
-              <View className="px-4 pt-3 pb-1 flex-row items-center">
-                <Ionicons name="sunny-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                <Text className="text-light-text font-extrabold text-[15px]">Odd semester</Text>
-              </View>
-              <MonthRow field="oddStart" label="Starts" />
-              <MonthRow field="oddEnd" label="Ends" last />
-            </Card>
-
-            <Card className="overflow-hidden mb-3">
-              <View className="px-4 pt-3 pb-1 flex-row items-center">
-                <Ionicons name="leaf-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                <Text className="text-light-text font-extrabold text-[15px]">Even semester</Text>
-              </View>
-              <MonthRow field="evenStart" label="Starts" />
-              <MonthRow field="evenEnd" label="Ends" last />
-            </Card>
-
-            {problem ? (
-              <View className="flex-row items-start bg-danger-bg rounded-2xl px-4 py-3 mb-3">
-                <Ionicons name="alert-circle" size={16} color={colors.danger} style={{ marginRight: 8, marginTop: 1 }} />
-                <Text className="text-danger text-[13px] font-semibold flex-1">{problem}</Text>
-              </View>
-            ) : (
-              <Text className="text-light-muted text-xs font-medium ml-1 mb-3">
-                The academic year runs {monthShort(draft.oddStart)} to {monthShort(draft.evenEnd)}.
-                {isStandard ? ' These are the standard months.' : ''}
+            <TourTarget targetKey="tour_settings_months" borderRadius={24}>
+              <SectionLabel className="mb-1 ml-1">SEMESTER MONTHS</SectionLabel>
+              <Text className="text-light-muted text-[13px] leading-5 ml-1 mb-3">
+                Choose when your college's semesters run. The app uses this to decide which semester is current. Months
+                between the two semesters count as part of the next one.
               </Text>
-            )}
 
-            <Button title="Save months" icon="checkmark" onPress={saveMonths} disabled={!!problem || !changed} />
-            <Button
-              title="Use standard months"
-              variant="outline"
-              icon="refresh"
-              onPress={() => setDraft(DEFAULT_CALENDAR)}
-              disabled={isStandard}
-              className="mt-3"
-            />
-
-            <SectionLabel className="mt-8 mb-3 ml-1">PREFERENCES</SectionLabel>
-            <Card className="overflow-hidden mb-3">
-              <View className="px-4 py-4 border-b border-light-border">
-                <Text className="text-light-text font-semibold text-[15px]">Attendance time</Text>
-                <Text className="text-light-muted text-xs font-medium mt-0.5 mb-3">
-                  How many seconds students get to type the code after you start a session.
-                </Text>
-                <View className="flex-row flex-wrap">
-                  {SESSION_SECONDS_OPTIONS.map((seconds) => (
-                    <Chip
-                      key={seconds}
-                      label={`${seconds}s`}
-                      selected={sessionSeconds === seconds}
-                      onPress={() => update({ sessionSeconds: seconds })}
-                      className="mr-2 mb-2"
-                    />
-                  ))}
+              <Card className="overflow-hidden mb-3">
+                <View className="px-4 pt-3 pb-1 flex-row items-center">
+                  <Ionicons name="sunny-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text className="text-light-text font-extrabold text-[15px]">Odd semester</Text>
                 </View>
-              </View>
+                <MonthRow field="oddStart" label="Starts" />
+                <MonthRow field="oddEnd" label="Ends" last />
+              </Card>
 
-              <View className="px-4 py-4 flex-row items-center border-b border-light-border">
-                <View className="flex-1 mr-3">
-                  <Text className="text-light-text font-semibold text-[15px]">Ask before starting attendance</Text>
+              <Card className="overflow-hidden mb-3">
+                <View className="px-4 pt-3 pb-1 flex-row items-center">
+                  <Ionicons name="leaf-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text className="text-light-text font-extrabold text-[15px]">Even semester</Text>
+                </View>
+                <MonthRow field="evenStart" label="Starts" />
+                <MonthRow field="evenEnd" label="Ends" last />
+              </Card>
+
+              {problem ? (
+                <View className="flex-row items-start bg-danger-bg rounded-2xl px-4 py-3 mb-3">
+                  <Ionicons name="alert-circle" size={16} color={colors.danger} style={{ marginRight: 8, marginTop: 1 }} />
+                  <Text className="text-danger text-[13px] font-semibold flex-1">{problem}</Text>
+                </View>
+              ) : (
+                <Text className="text-light-muted text-xs font-medium ml-1 mb-3">
+                  The academic year runs {monthShort(draft.oddStart)} to {monthShort(draft.evenEnd)}.
+                  {isStandard ? ' These are the standard months.' : ''}
+                </Text>
+              )}
+
+              <Button title="Save months" icon="checkmark" onPress={saveMonths} disabled={!!problem || !changed} />
+              <Button
+                title="Use standard months"
+                variant="outline"
+                icon="refresh"
+                onPress={() => setDraft(DEFAULT_CALENDAR)}
+                disabled={isStandard}
+                className="mt-3"
+              />
+            </TourTarget>
+
+            <TourTarget targetKey="tour_settings_preferences" borderRadius={24} style={{ marginTop: 28 }}>
+              <SectionLabel className="mb-3 ml-1">PREFERENCES</SectionLabel>
+              <Card className="overflow-hidden mb-3">
+                <View className="px-4 py-4 border-b border-light-border">
+                  <Text className="text-light-text font-semibold text-[15px]">Attendance time</Text>
+                  <Text className="text-light-muted text-xs font-medium mt-0.5 mb-3">
+                    How many seconds students get to type the code after you start a session.
+                  </Text>
+                  <View className="flex-row flex-wrap">
+                    {SESSION_SECONDS_OPTIONS.map((seconds) => (
+                      <Chip
+                        key={seconds}
+                        label={`${seconds}s`}
+                        selected={sessionSeconds === seconds}
+                        onPress={() => update({ sessionSeconds: seconds })}
+                        className="mr-2 mb-2"
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <View className="px-4 py-4 flex-row items-center border-b border-light-border">
+                  <View className="flex-1 mr-3">
+                    <Text className="text-light-text font-semibold text-[15px]">Ask before starting attendance</Text>
+                    <Text className="text-light-muted text-xs font-medium mt-0.5">
+                      Show a confirmation first. Turn off to start with one tap.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={confirmStart}
+                    onValueChange={(value) => update({ confirmStart: value })}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={colors.white}
+                    accessibilityLabel="Ask before starting attendance"
+                  />
+                </View>
+
+                <View className="px-4 py-4">
+                  <Text className="text-light-text font-semibold text-[15px]">Open Subjects on</Text>
+                  <Text className="text-light-muted text-xs font-medium mt-0.5 mb-3">
+                    Where the Subjects tab starts when you open it.
+                  </Text>
+                  <SegmentedControl<HomeStart>
+                    options={[
+                      { key: 'semester', label: 'Current semester' },
+                      { key: 'years', label: 'Year list' },
+                    ]}
+                    value={homeStart}
+                    onChange={(value) => update({ homeStart: value })}
+                  />
+                </View>
+              </Card>
+            </TourTarget>
+
+            <SectionLabel className="mt-8 mb-3 ml-1">UNO ASSISTANT & GUIDES</SectionLabel>
+            <Card className="overflow-hidden mb-3">
+              <TouchableOpacity
+                onPress={handleRestartTour}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Restart full walkthrough with Uno"
+                className="px-4 py-4 flex-row items-center border-b border-light-border"
+              >
+                <UnoAvatar size="md" />
+                <View className="flex-1 ml-3 mr-2">
+                  <Text className="text-light-text font-bold text-[15px]">Restart Full Tour with Uno</Text>
                   <Text className="text-light-muted text-xs font-medium mt-0.5">
-                    Show a confirmation first. Turn off to start with one tap.
+                    Replay the complete step-by-step product walkthrough.
                   </Text>
                 </View>
-                <Switch
-                  value={confirmStart}
-                  onValueChange={(value) => update({ confirmStart: value })}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                  thumbColor={colors.white}
-                  accessibilityLabel="Ask before starting attendance"
-                />
-              </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.subtle} />
+              </TouchableOpacity>
 
-              <View className="px-4 py-4">
-                <Text className="text-light-text font-semibold text-[15px]">Open Subjects on</Text>
-                <Text className="text-light-muted text-xs font-medium mt-0.5 mb-3">
-                  Where the Subjects tab starts when you open it.
-                </Text>
-                <SegmentedControl<HomeStart>
-                  options={[
-                    { key: 'semester', label: 'Current semester' },
-                    { key: 'years', label: 'Year list' },
-                  ]}
-                  value={homeStart}
-                  onChange={(value) => update({ homeStart: value })}
-                />
-              </View>
+              <TouchableOpacity
+                onPress={openFeatureGuides}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Open Uno feature guides"
+                className="px-4 py-4 flex-row items-center"
+              >
+                <View className="w-10 h-10 rounded-2xl bg-light-primaryBg items-center justify-center">
+                  <Ionicons name="list" size={18} color={colors.primary} />
+                </View>
+                <View className="flex-1 ml-3 mr-2">
+                  <Text className="text-light-text font-bold text-[15px]">Uno Feature Guides</Text>
+                  <Text className="text-light-muted text-xs font-medium mt-0.5">
+                    Browse individual guides: Semesters, Subjects, Leaves, and Reports.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.subtle} />
+              </TouchableOpacity>
             </Card>
 
             <Text className="text-light-subtle text-xs font-medium text-center mt-4 px-4 leading-[18px]">

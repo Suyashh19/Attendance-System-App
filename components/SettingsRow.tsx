@@ -11,10 +11,11 @@ interface SettingsRowProps {
   onPress: () => void;
   tone?: 'default' | 'danger';
   divider?: boolean;
+  iconColor?: string;
 }
 
 /** One tappable line in a settings card: icon, title, a short explanation and a chevron. */
-export function SettingsRow({ icon, title, subtitle, onPress, tone = 'default', divider = false }: SettingsRowProps) {
+export function SettingsRow({ icon, title, subtitle, onPress, tone = 'default', divider = false, iconColor }: SettingsRowProps) {
   const danger = tone === 'danger';
   return (
     <TouchableOpacity
@@ -25,7 +26,7 @@ export function SettingsRow({ icon, title, subtitle, onPress, tone = 'default', 
       className={`p-4 flex-row items-center ${divider ? 'border-b border-light-border' : ''}`}
     >
       <View className={`w-11 h-11 rounded-2xl items-center justify-center mr-4 ${danger ? 'bg-danger-bg' : 'bg-light'}`}>
-        <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.text} />
+        <Ionicons name={icon} size={20} color={danger ? colors.danger : (iconColor || colors.text)} />
       </View>
       <View className="flex-1">
         <Text className={`font-bold text-[15px] ${danger ? 'text-danger' : 'text-light-text'}`}>{title}</Text>

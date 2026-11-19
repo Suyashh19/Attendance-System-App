@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState, TextInput } from 'react-native';
+import { View, FlatList, RefreshControl, ActivityIndicator, TouchableOpacity, AppState, TextInput, Share } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -25,6 +25,9 @@ import { AttendanceSummaryModal } from '../../components/AttendanceSummaryModal'
 import { useSocket } from '../../hooks/useSocket';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { TourTarget } from '../../components/onboarding/TourTarget';
+import { INTERACTIVE_TOUR_STEPS } from '../../constants/onboardingTour';
 import type { SessionStartedPayload, Subject } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../components/Button';
@@ -41,6 +44,8 @@ import {
   currentAcademicYear,
   currentTerm,
   groupByAcademicYear, parseSpan, subjectsInTerm, termsPresent, OTHER_YEAR, type Term, } from '../../utils/academicYear';
+
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.suyashpatil.attendance';
 
 export default function HomeScreen() {
  const router = useRouter();
@@ -98,6 +103,29 @@ export default function HomeScreen() {
 
  const isFaculty = user?.role === 'faculty';
  const isStudent = user?.role === 'student';
+
+ // Faculty Onboarding Tour check on first login
+ const checkShouldShowTour = useOnboardingStore((s) => s.checkShouldShow);
+ const showWelcome = useOnboardingStore((s) => s.showWelcome);
+ const isTourActive = useOnboardingStore((s) => s.isActive);
+ const isWelcomeActive = useOnboardingStore((s) => s.showWelcomeIntro);
+ const openDemoSession = useOnboardingStore((s) => s.openDemoSession);
+ const currentStepIndex = useOnboardingStore((s) => s.currentStepIndex);
+ const advanceActionStep = useOnboardingStore((s) => s.advanceActionStep);
+ const currentTourStep = INTERACTIVE_TOUR_STEPS[currentStepIndex];
+
+ useEffect(() => {
+   if (isFaculty && user?.id && !isTourActive && !isWelcomeActive) {
+     checkShouldShowTour(user.id, true).then((shouldShow) => {
+       if (shouldShow) {
+         const timer = setTimeout(() => {
+           showWelcome();
+         }, 600);
+         return () => clearTimeout(timer);
+       }
+     });
+   }
+ }, [isFaculty, user?.id, isTourActive, isWelcomeActive, checkShouldShowTour, showWelcome]);
 
  // Students: classes attended per subject, shown on each card
  const { data: history, refetch: refetchHistory } = useQuery({
@@ -300,6 +328,12 @@ export default function HomeScreen() {
  // ─── Handlers ───────────────────────────────────────────────────────────────
  // One confirmation, then the session starts right away (it always starts "now")
  const handleStartSessionPress = (subject: Subject) => {
+ // If Uno walkthrough is active on Task 4 (Live Attendance), safely launch the live demo simulation
+ if (isTourActive && currentTourStep?.id === 'home_start_attendance') {
+ openDemoSession();
+ return;
+ }
+
  if (!confirmStart) {
  startSessionFor(subject);
  return;
@@ -312,6 +346,13 @@ export default function HomeScreen() {
  { text: 'Start', onPress: () => startSessionFor(subject) },
  ]
  );
+ };
+
+ const handleSubjectCardPress = (subject: Subject) => {
+ if (isTourActive && currentTourStep?.id === 'tap_open_roster') {
+ advanceActionStep('tap_open_roster');
+ }
+ router.push(`/subject/${subject.id}` as any);
  };
 
  const startSessionFor = async (subject: Subject) => {
@@ -435,7 +476,11 @@ export default function HomeScreen() {
  setFacultyType(null);
  setSearch('');
  queryClient.invalidateQueries({ queryKey: ['subjects'] });
+ if (useOnboardingStore.getState().isActive) {
+ useOnboardingStore.getState().goToStepId('navigate_to_settings');
+ } else {
  offerToShareSubject(created);
+ }
  }, [queryClient]);
 
  const handleEnrollSuccess = React.useCallback(() => {
@@ -466,7 +511,17 @@ export default function HomeScreen() {
  ? buildClassList(filteredSubjects, liveSubjectId)
  : filteredSubjects.map((subject) => ({ kind: 'subject', subject }));
 
+ const firstSubjectId = listEntries.find((e): e is { kind: 'subject'; subject: Subject } => e.kind === 'subject')?.subject.id;
+
  const openAddModal = () => (isFaculty ? setShowCreateModal(true) : setShowEnrollModal(true));
+ const handleReferFaculty = async () => {
+   const message = `Hello ,\nDiscover a smarter and more convenient way to manage attendance and academic activities with **Attendance System: Smart App**.\n\nTake attendance in just 10–15 seconds with a secure, real-time attendance system, simplifying everyday academic workflows.\n\nTake a look:\n\n${PLAY_STORE_URL}`;
+   try {
+     await Share.share({ message });
+   } catch {
+     // User dismissed share dialog
+   }
+ };
  const firstName = user?.name?.split(' ')[0] || 'there';
  const liveSubject = liveSubjectId !== null ? subjects.find((s) => s.id === liveSubjectId) : undefined;
 
@@ -509,12 +564,15 @@ export default function HomeScreen() {
  <View className="mb-3">
  <Hero className="px-5 pb-6" style={{ paddingTop: insets.top + 16 }}>
  <View className="flex-row items-center">
- <View className="w-12 h-12 rounded-full bg-white/15 border border-white/10 items-center justify-center">
+ <TourTarget targetKey="tour_dashboard_header" borderRadius={24} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+ <View className="w-12 h-12 rounded-full bg-white/15 border border-white/10 items-center justify-center mr-3">
  <Ionicons name={isFaculty ? 'easel' : 'school'} size={22} color={colors.white} />
  </View>
- <View className="flex-1 mx-3">
+ <View className="flex-1">
  <Text className="text-white text-[22px] font-extrabold" numberOfLines={1}>Hello, {firstName}</Text>
  </View>
+ </TourTarget>
+ <TourTarget targetKey="tour_new_subject" borderRadius={24}>
  <TouchableOpacity
  onPress={openAddModal}
  activeOpacity={0.85}
@@ -523,17 +581,25 @@ export default function HomeScreen() {
  className="bg-white h-11 pl-3 pr-4 rounded-full flex-row items-center"
  >
  <Ionicons name={isFaculty ? 'add' : 'enter-outline'} size={18} color={colors.primary} style={{ marginRight: 6 }} />
- <Text className="text-primary font-bold text-sm">{isFaculty ? 'New subject' : 'Enroll'}</Text>
+ <Text className="font-bold text-sm" style={{ color: colors.primary }}>{isFaculty ? 'New subject' : 'Enroll'}</Text>
  </TouchableOpacity>
+ </TourTarget>
  </View>
 
  {isFaculty ? (
+ <View className={pendingLeaveCount > 0 ? 'mt-5' : 'mt-4'}>
+ <TourTarget targetKey="tour_leave_requests" borderRadius={18}>
  <TouchableOpacity
- onPress={() => router.push('/leave-requests' as any)}
+ onPress={() => {
+   if (isTourActive && currentTourStep?.id === 'navigate_to_leaves') {
+     advanceActionStep('navigate_to_leaves');
+   }
+   router.push('/leave-requests' as any);
+ }}
  activeOpacity={0.85}
  accessibilityRole="button"
  accessibilityLabel={`Leave requests, ${pendingLeaveCount} waiting`}
- className={`rounded-2xl px-4 flex-row items-center ${pendingLeaveCount > 0 ? 'bg-white py-3 mt-5' : 'bg-white/10 border border-white/10 py-2 mt-4'}`}
+ className={`rounded-2xl px-4 flex-row items-center ${pendingLeaveCount > 0 ? 'bg-white py-3' : 'bg-white/10 border border-white/10 py-2'}`}
  >
  <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${pendingLeaveCount > 0 ? 'bg-primary/10' : 'bg-white/10'}`}>
  <Ionicons name="calendar-outline" size={20} color={pendingLeaveCount > 0 ? colors.primary : colors.white} />
@@ -547,12 +613,14 @@ export default function HomeScreen() {
  </Text>
  </View>
  {pendingLeaveCount > 0 && (
- <View className="bg-primary min-w-[28px] h-7 px-2 rounded-full items-center justify-center mr-2">
+ <View className="min-w-[28px] h-7 px-2 rounded-full items-center justify-center mr-2" style={{ backgroundColor: colors.primary }}>
  <Text className="text-white text-xs font-extrabold">{pendingLeaveCount}</Text>
  </View>
  )}
  <Ionicons name="chevron-forward" size={18} color={pendingLeaveCount > 0 ? colors.primary : 'rgba(255, 255, 255, 0.6)'} />
  </TouchableOpacity>
+ </TourTarget>
+ </View>
  ) : (
  <View className="flex-row mt-5">
  {overview.map(({ label, value }, i) => (
@@ -568,7 +636,8 @@ export default function HomeScreen() {
  )}
 
  {/* What is happening right now */}
- <View className={`rounded-2xl px-4 py-3 mt-3 flex-row items-center ${liveSubject ? 'bg-white' : 'bg-white/10 border border-white/10'}`}>
+ <TourTarget targetKey="tour_academic_settings" borderRadius={18} style={{ marginTop: 12 }}>
+ <View className={`rounded-2xl px-4 py-3 flex-row items-center ${liveSubject ? 'bg-white' : 'bg-white/10 border border-white/10'}`}>
  {liveSubject ? (
  <View className="w-8 h-8 rounded-full bg-success-bg items-center justify-center mr-3">
  <View className="w-2.5 h-2.5 rounded-full bg-success" />
@@ -584,6 +653,7 @@ export default function HomeScreen() {
  : 'No session right now. You will be notified when your faculty starts one.'}
  </Text>
  </View>
+ </TourTarget>
  </Hero>
 
  {isFaculty && subjects.length > 0 && (
@@ -650,12 +720,12 @@ export default function HomeScreen() {
  {facultyGroup.key === OTHER_YEAR ? 'Other subjects' : facultyGroup.label}
  </Text>
  {facultyTermsHere.length > 1 && (
+ <TourTarget targetKey="tour_subject_types" borderRadius={20}>
  <SegmentedControl
  options={facultyTermsHere.map((t) => ({ key: t ?? 'none', label: t ? `${t} semester` : 'No semester' }))}
  value={facultyActiveTerm ?? 'none'}
  onChange={(key) => { setFacultyTerm(key === 'none' ? null : (key as Term)); setFacultyType(null); }}
  />
- )}
  {theoryCount > 0 && practicalCount > 0 && (
  <View className="flex-row mt-3">
  <Chip
@@ -670,6 +740,25 @@ export default function HomeScreen() {
  onPress={() => setFacultyType(facultyType === 'practical' ? null : 'practical')}
  />
  </View>
+ )}
+ </TourTarget>
+ )}
+ {facultyTermsHere.length <= 1 && theoryCount > 0 && practicalCount > 0 && (
+ <TourTarget targetKey="tour_subject_types" borderRadius={20}>
+ <View className="flex-row mt-3">
+ <Chip
+ label={`Theory · ${theoryCount}`}
+ selected={facultyType === 'theory'}
+ onPress={() => setFacultyType(facultyType === 'theory' ? null : 'theory')}
+ className="mr-2"
+ />
+ <Chip
+ label={`Practical · ${practicalCount}`}
+ selected={facultyType === 'practical'}
+ onPress={() => setFacultyType(facultyType === 'practical' ? null : 'practical')}
+ />
+ </View>
+ </TourTarget>
  )}
  </View>
  )}
@@ -764,6 +853,7 @@ export default function HomeScreen() {
  </View>
  ) :
  <View className="flex-1 justify-center px-4">
+ <TourTarget targetKey="tour_roster_management" borderRadius={24}>
  <EmptyState
  icon={isFaculty ? 'school-outline' : 'book-outline'}
  title={isFaculty ? 'No subjects yet' : 'No subjects yet'}
@@ -771,13 +861,31 @@ export default function HomeScreen() {
  ? 'Create a subject, then share its code with your students so they can enroll.'
  : 'Enter the subject code from your faculty to start tracking your attendance.'}
  action={
+ isFaculty ? (
  <Button
- title={isFaculty ? 'Create Subject' : 'Enroll in a Subject'}
+ title="Create Subject"
  onPress={openAddModal}
- icon={isFaculty ? 'add' : 'enter-outline'}
+ icon="add"
  />
+ ) : (
+ <View className="w-full">
+ <Button
+ title="Enroll in a Subject"
+ onPress={openAddModal}
+ icon="enter-outline"
+ />
+ <Button
+ title="Recommend this app to your faculty"
+ variant="outline"
+ icon="share-social-outline"
+ onPress={handleReferFaculty}
+ className="mt-3"
+ />
+ </View>
+ )
  }
  />
+ </TourTarget>
  </View>
  }
  renderItem={({ item: entry }) => entry.kind === 'header' ? (
@@ -786,13 +894,25 @@ export default function HomeScreen() {
  </SectionLabel>
  ) : (
  <View className="px-4">
+ {isFaculty && entry.subject.id === firstSubjectId ? (
  <SubjectCard
  subject={entry.subject}
  sessionActive={liveSubjectId === entry.subject.id}
  attendance={isStudent && history ? attendanceBySubject.get(entry.subject.id) ?? { present: 0, total: 0 } : undefined}
- onPress={() => router.push(`/subject/${entry.subject.id}` as any)}
+ onPress={() => handleSubjectCardPress(entry.subject)}
+ onStartSession={() => handleStartSessionPress(entry.subject)}
+ startTourKey="tour_start_button"
+ rosterTourKey="tour_roster_management"
+ />
+ ) : (
+ <SubjectCard
+ subject={entry.subject}
+ sessionActive={liveSubjectId === entry.subject.id}
+ attendance={isStudent && history ? attendanceBySubject.get(entry.subject.id) ?? { present: 0, total: 0 } : undefined}
+ onPress={() => handleSubjectCardPress(entry.subject)}
  onStartSession={() => handleStartSessionPress(entry.subject)}
  />
+ )}
  </View>
  )}
  />
@@ -840,6 +960,7 @@ export default function HomeScreen() {
  </View>
  </View>
  )}
+
  </View>
  );
 }

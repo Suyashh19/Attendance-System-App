@@ -1,5 +1,6 @@
 import React, { useEffect, useState, memo } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, TouchableOpacity, Keyboard, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../store/dialogStore';
 import { Button } from './Button';
 import { Input } from './Input';
@@ -18,6 +19,11 @@ import {
   type Term,
 } from '../utils/academicYear';
 import type { Subject } from '../types';
+import { TourTarget } from './onboarding/TourTarget';
+import { UnoAvatar } from './onboarding/UnoAvatar';
+import { useOnboardingStore } from '../store/onboardingStore';
+import { INTERACTIVE_TOUR_STEPS } from '../constants/onboardingTour';
+import { colors, shadow } from '../constants/theme';
 
 type SubjectType = 'theory' | 'practical';
 
@@ -63,6 +69,57 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
   const editing = !!subject;
   const [values, setValues] = useState(() => initialValues(subject, prefill));
   const [loading, setLoading] = useState(false);
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Track keyboard open state so Uno's pinned card adapts cleanly without wasting screen space
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  // Onboarding assistant integration
+  const isTourActive = useOnboardingStore((s) => s.isActive);
+  const currentStepIndex = useOnboardingStore((s) => s.currentStepIndex);
+  const advanceActionStep = useOnboardingStore((s) => s.advanceActionStep);
+  const goToStepId = useOnboardingStore((s) => s.goToStepId);
+  const setCreateModalOpen = useOnboardingStore((s) => s.setCreateModalOpen);
+
+  const currentStep = INTERACTIVE_TOUR_STEPS[currentStepIndex];
+  const isCreatingSubjectTask =
+    isTourActive &&
+    (currentStep?.id === 'tap_new_subject' ||
+      currentStep?.id === 'enter_subject_name' ||
+      currentStep?.id === 'enter_subject_code' ||
+      currentStep?.id === 'pick_academic_term' ||
+      currentStep?.id === 'tap_create_button');
+
+  // Track create modal state so Uno knows whether to show in-modal pinned header or root floating bar
+  useEffect(() => {
+    setCreateModalOpen(visible);
+    if (visible && isTourActive && currentStep?.id === 'tap_new_subject') {
+      advanceActionStep('tap_new_subject');
+    }
+    return () => {
+      setCreateModalOpen(false);
+    };
+  }, [visible, isTourActive, currentStep?.id, advanceActionStep, setCreateModalOpen]);
+
+  const handleModalClose = () => {
+    if (isTourActive && isCreatingSubjectTask) {
+      goToStepId('tap_new_subject');
+    }
+    onClose();
+  };
 
   // The saved year is always offered, even when it has fallen out of the usual range
   const yearOptions = React.useMemo(() => {
@@ -73,8 +130,21 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
   // Each time the sheet opens it starts from the subject being edited, the duplicate, or blank
   useEffect(() => {
     if (visible) setValues(initialValues(subject, prefill));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const handleNameChange = (text: string) => {
+    setValues((prev) => ({ ...prev, name: text }));
+    if (isTourActive && currentStep?.id === 'enter_subject_name' && text.trim().length >= 3) {
+      advanceActionStep('enter_subject_name');
+    }
+  };
+
+  const handleCodeChange = (text: string) => {
+    setValues((prev) => ({ ...prev, code: text }));
+    if (isTourActive && currentStep?.id === 'enter_subject_code' && text.trim().length >= 2) {
+      advanceActionStep('enter_subject_code');
+    }
+  };
 
   const handleSave = async () => {
     const name = values.name.trim();
@@ -116,6 +186,10 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
         saved = await createSubject(name, code, values.type, span || undefined);
       }
 
+      if (isTourActive) {
+        goToStepId('navigate_to_settings');
+      }
+
       onSuccess(values.type, saved);
     } catch (err: any) {
       showAlert(
@@ -134,66 +208,125 @@ export const CreateSubjectModal = memo(({ visible, onClose, onSuccess, subject, 
       ? 'Give the copy a new code and check its academic year. It starts with no students.'
       : 'Students enroll with the subject code you set here.';
 
+  // Pinned Uno Assistant guidance header card: stays permanently visible even when keyboard is open
+  const unoPinnedHeader = isCreatingSubjectTask ? (
+    <View
+      className="bg-light-primaryBg border border-primary/30 rounded-2xl p-2.5"
+      style={shadow.glow}
+    >
+      <View className="flex-row items-center mb-1">
+        <UnoAvatar size="sm" />
+        <Text className="text-primary font-extrabold text-xs ml-2">Uno Guide</Text>
+        <View className="ml-auto bg-primary/15 px-2 py-0.5 rounded-full">
+          <Text className="text-primary font-bold text-[10.5px]">
+            {currentStep?.taskTitle}
+          </Text>
+        </View>
+      </View>
+      <Text
+        className="text-light-text text-[12px] font-semibold leading-[16px]"
+        numberOfLines={isKeyboardVisible ? 2 : undefined}
+      >
+        "{currentStep?.unoSpeech}"
+      </Text>
+
+      {currentStep?.id === 'pick_academic_term' && (
+        <TouchableOpacity
+          onPress={() => goToStepId('tap_create_button')}
+          activeOpacity={0.8}
+          className="bg-primary py-1 px-3 rounded-full self-start flex-row items-center mt-1.5"
+        >
+          <Text className="text-white text-xs font-bold mr-1">Ready to Create</Text>
+          <Ionicons name="chevron-forward" size={13} color={colors.white} />
+        </TouchableOpacity>
+      )}
+    </View>
+  ) : undefined;
+
   return (
-    <BottomSheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
-      <Input
-        label="Subject name"
-        placeholder="e.g. Distributed Systems"
-        icon="school-outline"
-        value={values.name}
-        onChangeText={(t) => setValues({ ...values, name: t })}
-      />
-      <Input
-        label="Subject code"
-        placeholder="e.g. CS402"
-        icon="pricetag-outline"
-        value={values.code}
-        onChangeText={(t) => setValues({ ...values, code: t })}
-        autoCapitalize="characters"
-        autoCorrect={false}
-      />
-      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
-        {yearOptions.map((year) => (
-          <Chip
-            key={year}
-            label={year === currentAcademicYear() ? `${year} · Current` : year}
-            selected={values.year === year}
-            onPress={() => setValues({ ...values, year })}
-            className="mr-2"
-          />
-        ))}
-      </ScrollView>
-      {values.year ? (
-        <SegmentedControl
-          options={TERM_OPTIONS}
-          value={values.term}
-          onChange={(term) => setValues({ ...values, term })}
-          className="mb-4"
+    <BottomSheet
+      visible={visible}
+      onClose={handleModalClose}
+      title={title}
+      subtitle={isCreatingSubjectTask ? undefined : subtitle}
+      headerExtra={unoPinnedHeader}
+      scrollable
+    >
+      <TourTarget targetKey="tour_input_subject_name" borderRadius={14}>
+        <Input
+          label="Subject name"
+          placeholder="e.g. Distributed Systems"
+          icon="school-outline"
+          value={values.name}
+          onChangeText={handleNameChange}
         />
-      ) : null}
-      {subject?.span && !parseSpan(subject.span) && !values.year && (
-        <Text className="text-light-muted text-xs font-medium -mt-1 mb-4 ml-1">
-          Current label: {subject.span}. Pick an academic year to replace it.
-        </Text>
-      )}
-      {editing && values.code.trim().toUpperCase() !== subject!.code && (
-        <Text className="text-light-muted text-xs font-medium -mt-2 mb-4 ml-1">
-          Students who join later must use the new code. Share it with them.
-        </Text>
-      )}
+      </TourTarget>
 
-      <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Type</Text>
-      <SegmentedControl
-        options={TYPES}
-        value={values.type}
-        onChange={(type) => setValues({ ...values, type })}
-        className="mb-6"
-      />
+      <TourTarget targetKey="tour_input_subject_code" borderRadius={14}>
+        <Input
+          label="Subject code"
+          placeholder="e.g. CS402"
+          icon="pricetag-outline"
+          value={values.code}
+          onChangeText={handleCodeChange}
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+      </TourTarget>
 
-      <View className="flex-row">
-        <Button title="Cancel" variant="outline" onPress={onClose} disabled={loading} className="flex-1 mr-3" />
-        <Button title={editing ? 'Save' : 'Create'} onPress={handleSave} className="flex-1" loading={loading} />
+      <TourTarget targetKey="tour_create_options" borderRadius={16}>
+        <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Academic year</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4 -mx-6" contentContainerStyle={{ paddingHorizontal: 24 }}>
+          {yearOptions.map((year) => (
+            <Chip
+              key={year}
+              label={year === currentAcademicYear() ? `${year} · Current` : year}
+              selected={values.year === year}
+              onPress={() => {
+                setValues({ ...values, year });
+                if (isTourActive && currentStep?.id === 'pick_academic_term') {
+                  advanceActionStep('pick_academic_term');
+                }
+              }}
+              className="mr-2"
+            />
+          ))}
+        </ScrollView>
+
+        {values.year ? (
+          <SegmentedControl
+            options={TERM_OPTIONS}
+            value={values.term}
+            onChange={(term) => setValues({ ...values, term })}
+            className="mb-4"
+          />
+        ) : null}
+
+        {subject?.span && !parseSpan(subject.span) && !values.year && (
+          <Text className="text-light-muted text-xs font-medium -mt-1 mb-4 ml-1">
+            Current label: {subject.span}. Pick an academic year to replace it.
+          </Text>
+        )}
+        {editing && values.code.trim().toUpperCase() !== subject!.code && (
+          <Text className="text-light-muted text-xs font-medium -mt-2 mb-4 ml-1">
+            Students who join later must use the new code. Share it with them.
+          </Text>
+        )}
+
+        <Text className="text-light-text font-semibold mb-2 ml-1 text-[13px]">Type</Text>
+        <SegmentedControl
+          options={TYPES}
+          value={values.type}
+          onChange={(type) => setValues({ ...values, type })}
+          className="mb-6"
+        />
+      </TourTarget>
+
+      <View className="flex-row mt-1">
+        <Button title="Cancel" variant="outline" onPress={handleModalClose} disabled={loading} className="flex-1 mr-3" />
+        <TourTarget targetKey="tour_create_button" borderRadius={24} style={{ flex: 1 }}>
+          <Button title={editing ? 'Save' : 'Create'} onPress={handleSave} loading={loading} />
+        </TourTarget>
       </View>
     </BottomSheet>
   );

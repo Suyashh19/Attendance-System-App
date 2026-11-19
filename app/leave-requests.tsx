@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, FlatList, RefreshControl } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,8 @@ import { LeaveRejectSheet } from '../components/LeaveRejectSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ListSkeleton } from '../components/Skeleton';
 import { Text } from '../components/Text';
+import { TourTarget } from '../components/onboarding/TourTarget';
+import { useOnboardingStore } from '../store/onboardingStore';
 
 const PENDING_KEY = ['pending-leaves'];
 
@@ -24,6 +26,12 @@ export default function LeaveRequestsScreen() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
+
+  useEffect(() => {
+    if (useOnboardingStore.getState().isActive) {
+      useOnboardingStore.getState().advanceActionStep('navigate_to_leaves');
+    }
+  }, []);
 
   const leaves = useQuery({ queryKey: PENDING_KEY, queryFn: getPendingLeaves });
   const list = leaves.data ?? [];
@@ -176,28 +184,30 @@ export default function LeaveRequestsScreen() {
         )}
       </ScreenHeader>
 
-      <FlatList
-        data={list}
-        keyExtractor={(leave) => String(leave.id)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32, flexGrow: 1 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
-        }
-        ListEmptyComponent={
-          leaves.isLoading ? (
-            <ListSkeleton count={3} className="pt-2" />
-          ) : (
-            <EmptyState
-              icon={leaves.isError ? 'cloud-offline-outline' : 'checkmark-done-outline'}
-              tone={leaves.isError ? 'danger' : 'primary'}
-              title={leaves.isError ? 'Could not load requests' : 'All caught up'}
-              text={leaves.isError ? 'Pull down to try again.' : 'No leave requests are waiting. When a student applies, it appears here.'}
-            />
-          )
-        }
-        renderItem={({ item }) => renderLeave(item)}
-      />
+      <TourTarget targetKey="tour_leave_requests_view" borderRadius={20} style={{ flex: 1 }}>
+        <FlatList
+          data={list}
+          keyExtractor={(leave) => String(leave.id)}
+          contentContainerStyle={{ padding: 16, paddingBottom: 32, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+          }
+          ListEmptyComponent={
+            leaves.isLoading ? (
+              <ListSkeleton count={3} className="pt-2" />
+            ) : (
+              <EmptyState
+                icon={leaves.isError ? 'cloud-offline-outline' : 'checkmark-done-outline'}
+                tone={leaves.isError ? 'danger' : 'primary'}
+                title={leaves.isError ? 'Could not load requests' : 'All caught up'}
+                text={leaves.isError ? 'Pull down to try again.' : 'No leave requests are waiting. When a student applies, it appears here.'}
+              />
+            )
+          }
+          renderItem={({ item }) => renderLeave(item)}
+        />
+      </TourTarget>
 
       <LeaveRejectSheet
         visible={rejecting !== null}

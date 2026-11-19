@@ -8,6 +8,7 @@ import { StatusPill } from './StatusPill';
 import { Text } from './Text';
 import { PressableScale } from './PressableScale';
 import { ProgressRing } from './ProgressRing';
+import { TourTarget } from './onboarding/TourTarget';
 
 interface SubjectCardProps {
   subject: Subject;
@@ -17,6 +18,8 @@ interface SubjectCardProps {
   /** Opens the subject's own page */
   onPress?: () => void;
   onStartSession?: () => void;
+  startTourKey?: string;
+  rosterTourKey?: string;
 }
 
 export function SubjectCard({
@@ -25,6 +28,8 @@ export function SubjectCard({
   attendance,
   onPress,
   onStartSession,
+  startTourKey,
+  rosterTourKey,
 }: SubjectCardProps) {
   const user = useAuthStore((s) => s.user);
   const isFaculty = user?.role === 'faculty';
@@ -93,7 +98,17 @@ export function SubjectCard({
           </View>
         ) : null}
 
-        <Ionicons name="chevron-forward" size={18} color={colors.subtle} />
+        {rosterTourKey ? (
+          <TourTarget
+            targetKey={rosterTourKey}
+            borderRadius={16}
+            style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="chevron-forward" size={18} color={colors.subtle} />
+          </TourTarget>
+        ) : (
+          <Ionicons name="chevron-forward" size={18} color={colors.subtle} />
+        )}
       </View>
 
       {/* Student: attendance so far */}
@@ -137,19 +152,37 @@ export function SubjectCard({
           <Text className="text-light-muted text-sm font-medium flex-1">Students and lectures</Text>
 
           {!sessionActive && (
-            <TouchableOpacity
-              onPress={onStartSession}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={`Start attendance for ${subject.name}`}
-              className="bg-primary h-10 pl-3 pr-4 rounded-full flex-row items-center"
-              style={shadow.glow}
-            >
-              <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center mr-2">
-                <Ionicons name="play" size={11} color={colors.white} />
-              </View>
-              <Text className="text-white text-sm font-bold">Start</Text>
-            </TouchableOpacity>
+            startTourKey ? (
+              <TourTarget targetKey={startTourKey} borderRadius={20}>
+                <TouchableOpacity
+                  onPress={onStartSession}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Start attendance for ${subject.name}`}
+                  className="h-10 pl-3 pr-4 rounded-full flex-row items-center"
+                  style={[{ backgroundColor: colors.primary }, shadow.glow]}
+                >
+                  <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center mr-2">
+                    <Ionicons name="play" size={11} color={colors.white} />
+                  </View>
+                  <Text className="text-white text-sm font-bold">Start</Text>
+                </TouchableOpacity>
+              </TourTarget>
+            ) : (
+              <TouchableOpacity
+                onPress={onStartSession}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Start attendance for ${subject.name}`}
+                className="h-10 pl-3 pr-4 rounded-full flex-row items-center"
+                style={[{ backgroundColor: colors.primary }, shadow.glow]}
+              >
+                <View className="w-6 h-6 rounded-full bg-white/20 items-center justify-center mr-2">
+                  <Ionicons name="play" size={11} color={colors.white} />
+                </View>
+                <Text className="text-white text-sm font-bold">Start</Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
       )}

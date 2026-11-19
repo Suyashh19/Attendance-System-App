@@ -4,11 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore } from '../../store/authStore';
 import { useSocket } from '../../hooks/useSocket';
 import { Text } from '../../components/Text';
 import { colors, shadow } from '../../constants/theme';
+import { TourTarget } from '../../components/onboarding/TourTarget';
+import { useOnboardingStore } from '../../store/onboardingStore';
 
 // The code screen is opened by a live session, not from the bar
 const HIDDEN_ROUTES = ['attendance'];
@@ -16,6 +17,7 @@ const HIDDEN_ROUTES = ['attendance'];
 /** Tab bar with a highlighted pill behind the active icon. */
 function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const isFaculty = useAuthStore(s => s.user?.role === 'faculty');
   if (HIDDEN_ROUTES.includes(state.routes[state.index].name)) return null;
 
   return (
@@ -31,21 +33,29 @@ function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         const tint = focused ? colors.primary : colors.subtle;
         const label = options.title ?? route.name;
 
+        const isReportsTab = isFaculty && route.name === 'history';
+
         const onPress = () => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+          if (isReportsTab && useOnboardingStore.getState().isActive) {
+            useOnboardingStore.getState().advanceActionStep('navigate_to_reports');
+          }
         };
 
-        return (
+        const tabContent = (
           <Pressable
             key={route.key}
             onPress={onPress}
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             accessibilityLabel={label}
-            className="flex-1 items-center"
+            style={{ width: '100%', alignItems: 'center' }}
           >
-            <View className={`w-16 h-9 rounded-full items-center justify-center ${focused ? 'bg-light-primaryBg' : 'bg-transparent'}`}>
+            <View
+              className="w-16 h-9 rounded-full items-center justify-center"
+              style={{ backgroundColor: focused ? colors.primaryBg : 'transparent' }}
+            >
               {options.tabBarIcon?.({ focused, color: tint, size: 22 })}
             </View>
             <Text
@@ -55,6 +65,25 @@ function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               {label}
             </Text>
           </Pressable>
+        );
+
+        if (isReportsTab) {
+          return (
+            <TourTarget
+              key={route.key}
+              targetKey="tour_reports_tab"
+              borderRadius={24}
+              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+            >
+              {tabContent}
+            </TourTarget>
+          );
+        }
+
+        return (
+          <View key={route.key} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            {tabContent}
+          </View>
         );
       })}
     </View>
@@ -77,13 +106,15 @@ export default function TabLayout() {
   });
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        <Tabs
-          tabBar={(props) => <TabBar {...props} />}
-          // Every screen draws its own gradient header
-          screenOptions={{ headerShown: false }}
-        >
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Tabs
+        tabBar={(props) => <TabBar {...props} />}
+        // Every screen draws its own gradient header
+        screenOptions={{
+          headerShown: false,
+          tabBarPosition: 'bottom',
+        }}
+      >
           <Tabs.Screen
             name="home"
             options={{
@@ -123,6 +154,5 @@ export default function TabLayout() {
           />
         </Tabs>
       </View>
-    </GestureHandlerRootView>
   );
 }

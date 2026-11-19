@@ -6,13 +6,15 @@ import { useAuthStore } from '../store/authStore';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
- useFonts,
- PlusJakartaSans_400Regular,
- PlusJakartaSans_500Medium,
- PlusJakartaSans_600SemiBold,
- PlusJakartaSans_700Bold,
- PlusJakartaSans_800ExtraBold,
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { colors } from '../constants/theme';
 import { queryClient, queryPersister, CACHE_MAX_AGE } from '../services/queryClient';
@@ -20,6 +22,7 @@ import { warmUpServer } from '../services/api';
 import { ServerWakeBanner } from '../components/ServerWakeBanner';
 import { DialogHost } from '../components/DialogHost';
 import { useSettingsStore } from '../store/settingsStore';
+import { UnoInteractiveAssistant } from '../components/onboarding/UnoInteractiveAssistant';
 
 import '../global.css';
 
@@ -67,21 +70,25 @@ function AuthRedirectHandler() {
 }
 
 function RootLayoutNav() {
- return (
- <ThemeProvider value={appTheme}>
- <AuthRedirectHandler />
- <Stack screenOptions={{ headerShown: false }}>
- <Stack.Screen name="(auth)" options={{ headerShown: false }} />
- <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
- <Stack.Screen name="index" options={{ headerShown: false }} />
- <Stack.Screen name="subject/[id]" options={{ animation: 'slide_from_right' }} />
- <Stack.Screen name="lecture-detail" options={{ animation: 'slide_from_right' }} />
- <Stack.Screen name="leave" options={{ animation: 'slide_from_right' }} />
- <Stack.Screen name="leave-requests" options={{ animation: 'slide_from_right' }} />
- <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
- </Stack>
- </ThemeProvider>
- );
+  const navigationState = useRootNavigationState();
+  const isNavReady = !!navigationState?.key;
+
+  return (
+    <ThemeProvider value={appTheme}>
+      <AuthRedirectHandler />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="subject/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="lecture-detail" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="leave" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="leave-requests" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+      </Stack>
+      {isNavReady && <UnoInteractiveAssistant />}
+    </ThemeProvider>
+  );
 }
 
 export default function RootLayout() {
@@ -119,17 +126,21 @@ export default function RootLayout() {
  return null;
  }
 
- return (
- <View className="flex-1 bg-light">
- <StatusBar style="light" />
- <PersistQueryClientProvider
- client={queryClient}
- persistOptions={{ persister: queryPersister, maxAge: CACHE_MAX_AGE }}
- >
- <RootLayoutNav />
- </PersistQueryClientProvider>
- <ServerWakeBanner />
- <DialogHost />
- </View>
- );
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <View className="flex-1 bg-light">
+          <StatusBar style="light" />
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{ persister: queryPersister, maxAge: CACHE_MAX_AGE }}
+          >
+            <RootLayoutNav />
+          </PersistQueryClientProvider>
+          <ServerWakeBanner />
+          <DialogHost />
+        </View>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
 }

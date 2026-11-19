@@ -28,6 +28,8 @@ import {
   type StudentListFilters,
 } from '../../utils/historyView';
 import { Button } from '../../components/Button';
+import { TourTarget } from '../../components/onboarding/TourTarget';
+import { useOnboardingStore } from '../../store/onboardingStore';
 import { Text } from '../../components/Text';
 import { Card } from '../../components/Card';
 import { AttendanceCalendar } from '../../components/AttendanceCalendar';
@@ -65,6 +67,12 @@ export default function HistoryScreen() {
  useSettingsStore((s) => s.calendar);
  const isStudent = user?.role === 'student';
  const isFaculty = user?.role === 'faculty';
+
+ React.useEffect(() => {
+   if (isFaculty && useOnboardingStore.getState().isActive) {
+     useOnboardingStore.getState().advanceActionStep('navigate_to_reports');
+   }
+ }, [isFaculty]);
 
  const { data: history = [], isLoading: historyLoading, isError, refetch: refetchHistory } = useQuery({
  queryKey: ['history'],
@@ -590,6 +598,7 @@ export default function HistoryScreen() {
  </Text>
  </View>
 
+ <TourTarget targetKey="tour_reports_export_action" borderRadius={24}>
  <TouchableOpacity
  onPress={() => {
  setInitialSubjectId(Number(subject.id));
@@ -603,6 +612,7 @@ export default function HistoryScreen() {
  <Ionicons name="download-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
  <Text className="text-primary font-bold text-sm">Excel</Text>
  </TouchableOpacity>
+ </TourTarget>
  </Card>
  </View>
  );

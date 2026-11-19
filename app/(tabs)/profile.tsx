@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, ScrollView, Linking } from 'react-native';
+import { View, ScrollView, Linking, Share } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,7 @@ import { SettingsRow } from '../../components/SettingsRow';
 
 // Shown in the Help section as "Contact support"
 const SUPPORT_EMAIL = 'spgroup177@gmail.com';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.suyashpatil.attendance';
 
 export default function ProfileScreen() {
  const { user, logout, setUser } = useAuthStore();
@@ -66,6 +67,18 @@ export default function ProfileScreen() {
      await Linking.openURL(url);
    } catch {
      showAlert('Could not open', 'Please try again, or copy the address into your browser.');
+   }
+ };
+
+ const handleShareApp = async () => {
+   const message = `Hello ,\nDiscover a smarter and more convenient way to manage attendance and academic activities with **Attendance System: Smart App**.\n\nTake attendance in just 10–15 seconds with a secure, real-time attendance system, simplifying everyday academic workflows.\n\nTake a look:\n\n${PLAY_STORE_URL}`;
+
+   try {
+     await Share.share({
+       message,
+     });
+   } catch {
+     // User dismissed share dialog
    }
  };
 
@@ -303,6 +316,13 @@ export default function ProfileScreen() {
  title="Settings"
  subtitle={user?.role === 'faculty' ? 'Password, semester months and preferences' : 'Password and account security'}
  onPress={() => router.push('/settings' as any)}
+ divider
+ />
+ <SettingsRow
+ icon="share-social"
+ title="Share & Refer"
+ subtitle={user?.role === 'faculty' ? 'Recommend this app to other faculty members' : 'Recommend this app to your faculty'}
+ onPress={handleShareApp}
  divider
  />
  <SettingsRow

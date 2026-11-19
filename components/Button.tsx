@@ -58,6 +58,8 @@ export function Button({
       className={className}
       contentClassName={`flex-row items-center justify-center ${v.container} ${s.container}`}
       contentStyle={[
+        variant === 'primary' && { backgroundColor: colors.primary },
+        variant === 'secondary' && { backgroundColor: colors.primaryBg },
         { opacity: inactive ? 0.55 : 1 },
         variant === 'primary' && !inactive ? shadow.glow : undefined,
       ]}
@@ -67,7 +69,12 @@ export function Button({
       ) : (
         <View className="flex-row items-center">
           {icon && <Ionicons name={icon} size={s.icon} color={v.tint} style={{ marginRight: 8 }} />}
-          <Text className={`${v.text} ${s.text} font-bold text-center`}>{title}</Text>
+          <Text
+            className={`${v.text} ${s.text} font-bold text-center`}
+            style={variant === 'secondary' || variant === 'ghost' ? { color: colors.primary } : undefined}
+          >
+            {title}
+          </Text>
         </View>
       )}
     </PressableScale>

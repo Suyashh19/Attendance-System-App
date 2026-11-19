@@ -5,9 +5,9 @@ module.exports = {
   navySoft: '#2B2550',
   // The far end of the hero gradient, which starts at `navy`
   heroEnd: '#3A2196',
-  primary: '#6D3BF5',
-  primarySoft: '#8E66FF',
-  primaryBg: '#F1ECFF',
+  primary: '#5232D5',
+  primarySoft: '#7556EA',
+  primaryBg: '#F0ECFC',
   gold: '#F9603B',
   goldBg: '#FFF0EA',
 

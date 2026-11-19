@@ -1,5 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { View, FlatList, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import {
+  View,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  Animated,
+  StyleSheet,
+} from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +42,9 @@ import { EmptyState, SectionLabel } from '../EmptyState';
 import { ListSkeleton } from '../Skeleton';
 import { StatusPill } from '../StatusPill';
 import { LeaveRejectSheet } from '../LeaveRejectSheet';
+import { TourTarget } from '../onboarding/TourTarget';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { INTERACTIVE_TOUR_STEPS } from '../../constants/onboardingTour';
 import { BottomSheet } from '../BottomSheet';
 
 type Tab = 'students' | 'requests' | 'leaves' | 'lectures';
@@ -61,6 +73,41 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  React.useEffect(() => {
+    if (useOnboardingStore.getState().isActive) {
+      useOnboardingStore.getState().advanceActionStep('tap_open_roster');
+    }
+  }, []);
+
+  // Uno Step 13 Share Tooltip & Target Highlight
+  const isTourActive = useOnboardingStore((s) => s.isActive);
+  const currentStepIndex = useOnboardingStore((s) => s.currentStepIndex);
+  const currentTourStep = INTERACTIVE_TOUR_STEPS[currentStepIndex];
+  const isRosterStep = isTourActive && currentTourStep?.id === 'explain_roster_management';
+  const [dismissedShareTip, setDismissedShareTip] = useState(false);
+  const showShareTip = isRosterStep && !dismissedShareTip;
+
+  const sharePulse = useRef(new Animated.Value(0.4)).current;
+  const shareScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!showShareTip) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(sharePulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+          Animated.timing(shareScale, { toValue: 1.12, duration: 700, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(sharePulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+          Animated.timing(shareScale, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [showShareTip, sharePulse, shareScale]);
   const [showEdit, setShowEdit] = useState(false);
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -560,11 +607,51 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         subtitle={subjectSubtitle(subject)}
         right={
           <View className="flex-row ml-3">
-            <HeaderButton icon="share-social-outline" label="Share subject code" onPress={() => void shareSubjectCode(subject)} />
+            <HeaderButton
+              icon="share-social-outline"
+              label="Share subject code"
+              onPress={() => {
+                setDismissedShareTip(true);
+                void shareSubjectCode(subject);
+              }}
+              highlighted={showShareTip}
+              pulseAnim={sharePulse}
+              scaleAnim={shareScale}
+            />
             <HeaderButton icon="ellipsis-horizontal" label="More options" onPress={() => setShowMenu(true)} busy={deleting} />
           </View>
         }
       >
+        {/* Step 13 Share Code Notification Popup */}
+        {showShareTip && (
+          <View className="mt-3 bg-white/95 border border-white rounded-2xl p-3 shadow-md">
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center flex-1 mr-2">
+                <View className="w-6 h-6 rounded-full bg-primary/10 items-center justify-center mr-2">
+                  <Ionicons name="share-social" size={13} color={colors.primary} />
+                </View>
+                <Text className="text-light-text font-black text-xs">Share Course Code</Text>
+                <View className="ml-2 bg-primary/15 px-2 py-0.5 rounded-full">
+                  <Text className="text-primary font-bold text-[10px]">WhatsApp / Link</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDismissedShareTip(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.7}
+                className="w-5 h-5 rounded-full bg-light items-center justify-center"
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss share tip"
+              >
+                <Ionicons name="close" size={13} color={colors.subtle} />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-light-muted text-xs font-semibold leading-[17px] ml-8">
+              Tap the highlighted icon above to share code <Text className="text-primary font-bold">{subject.code}</Text> directly to WhatsApp or student groups for instant enrollment.
+            </Text>
+          </View>
+        )}
+
         {/* Numbers at a glance */}
         <View className="flex-row mt-5">
           <Stat value={approved.length} label="Students" />
@@ -590,7 +677,9 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
         ListHeaderComponent={
           <View>
             {/* Section switch */}
-            <SegmentedControl options={tabs} value={tab} onChange={setTab} className="mb-4" />
+            <TourTarget targetKey="tour_subject_roster_view" borderRadius={20} className="mb-4">
+              <SegmentedControl options={tabs} value={tab} onChange={setTab} />
+            </TourTarget>
 
             {tab === 'requests' && pending.length > 1 && (
               <Button
@@ -745,23 +834,47 @@ function HeaderButton({
   label,
   onPress,
   busy,
+  highlighted,
+  pulseAnim,
+  scaleAnim,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   busy?: boolean;
+  highlighted?: boolean;
+  pulseAnim?: Animated.Value;
+  scaleAnim?: Animated.Value;
 }) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={busy}
-      hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className="w-10 h-10 bg-white/10 border border-white/15 rounded-full items-center justify-center ml-2"
-    >
-      {busy ? <ActivityIndicator size="small" color={colors.white} /> : <Ionicons name={icon} size={17} color={colors.white} />}
-    </TouchableOpacity>
+    <View className="relative ml-2 w-10 h-10 items-center justify-center">
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={busy}
+        hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        className="w-10 h-10 bg-white/10 border border-white/15 rounded-full items-center justify-center"
+      >
+        {busy ? <ActivityIndicator size="small" color={colors.white} /> : <Ionicons name={icon} size={17} color={colors.white} />}
+      </TouchableOpacity>
+      {highlighted && pulseAnim && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              borderRadius: 20,
+              borderWidth: 2.5,
+              borderColor: '#FFFFFF',
+              backgroundColor: 'rgba(255, 255, 255, 0.25)',
+              opacity: pulseAnim,
+              transform: [{ scale: scaleAnim ?? 1 }],
+            },
+          ]}
+        />
+      )}
+    </View>
   );
 }
 

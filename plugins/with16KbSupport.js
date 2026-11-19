@@ -64,9 +64,10 @@ function with16KbSupport(config) {
     return modConfig;
   });
 
-  // 4. Disable split-screen and multi-window mode at the OS level
+  // 4. Disable split-screen and multi-window mode at the OS level & mark portrait hardware feature as optional
   config = withAndroidManifest(config, (modConfig) => {
-    const mainApplication = modConfig.modResults.manifest.application?.[0];
+    const manifest = modConfig.modResults.manifest;
+    const mainApplication = manifest.application?.[0];
     if (mainApplication?.activity) {
       const mainActivity = mainApplication.activity.find(
         (a) => a.$['android:name'] === '.MainActivity'
@@ -75,6 +76,28 @@ function with16KbSupport(config) {
         mainActivity.$['android:resizeableActivity'] = 'false';
       }
     }
+
+    // Mark portrait hardware feature as optional for Google Play Console availability
+    manifest.$ = manifest.$ || {};
+    manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+    manifest['uses-feature'] = manifest['uses-feature'] || [];
+
+    const portraitFeature = manifest['uses-feature'].find(
+      (f) => f.$ && f.$['android:name'] === 'android.hardware.screen.portrait'
+    );
+    if (portraitFeature) {
+      portraitFeature.$['android:required'] = 'false';
+      portraitFeature.$['tools:replace'] = 'android:required';
+    } else {
+      manifest['uses-feature'].push({
+        $: {
+          'android:name': 'android.hardware.screen.portrait',
+          'android:required': 'false',
+          'tools:replace': 'android:required',
+        },
+      });
+    }
+
     return modConfig;
   });
 

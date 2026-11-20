@@ -2,7 +2,7 @@
   "expo": {
     "name": "Attendance System",
     "slug": "attendance-system",
-    "version": "1.2.5",
+    "version": "1.2.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attendance-system",
@@ -30,6 +30,14 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ]
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a4705414-8542-479c-ab98-f49df4edbd64",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "web": {
       "favicon": "./assets/icon.png"

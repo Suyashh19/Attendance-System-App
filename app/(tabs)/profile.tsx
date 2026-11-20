@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, ScrollView, Linking, Share } from 'react-native';
+import { View, ScrollView, Linking, Share, TouchableOpacity } from 'react-native';
 import { showAlert } from '../../store/dialogStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import { Card } from '../../components/Card';
 import { BottomSheet } from '../../components/BottomSheet';
 import { SectionLabel } from '../../components/EmptyState';
 import { SettingsRow } from '../../components/SettingsRow';
+import { useAppUpdateStore, getCurrentAppVersion } from '../../services/versionCheck';
 
 // Shown in the Help section as "Contact support"
 const SUPPORT_EMAIL = 'spgroup177@gmail.com';
@@ -43,6 +44,14 @@ export default function ProfileScreen() {
  const [deviceOtp, setDeviceOtp] = useState('');
  const [isRequestingDeviceOtp, setIsRequestingDeviceOtp] = useState(false);
  const [isConfirmingDevice, setIsConfirmingDevice] = useState(false);
+ const { triggerCheck, isChecking } = useAppUpdateStore();
+
+ const handleCheckUpdate = async () => {
+   const result = await triggerCheck(true);
+   if (!result.isOutdated) {
+     showAlert('App is Up to Date', `You are running the latest version (v${result.currentVersion}) of Attendance System.`);
+   }
+ };
 
  const handleLogout = () => {
  showAlert(
@@ -361,9 +370,23 @@ export default function ProfileScreen() {
  />
  </Card>
 
- <Text className="text-center text-light-subtle text-xs font-medium mt-8">
- Attendance System v{Constants.expoConfig?.version ?? '1.2.3'}
- </Text>
+ <TouchableOpacity
+   onPress={handleCheckUpdate}
+   activeOpacity={0.7}
+   accessibilityRole="button"
+   accessibilityLabel="Check for app updates"
+   className="mt-8 mb-4 items-center"
+ >
+   <Text className="text-center text-light-subtle text-xs font-medium">
+     Attendance System v{getCurrentAppVersion()}
+   </Text>
+   <View className="flex-row items-center mt-1">
+     <Ionicons name="refresh-outline" size={13} color={colors.primary} style={{ marginRight: 4 }} />
+     <Text className="text-primary text-xs font-semibold">
+       {isChecking ? 'Checking for updates...' : 'Check for updates'}
+     </Text>
+   </View>
+ </TouchableOpacity>
  </View>
 
  {/* Link This Phone Modal */}

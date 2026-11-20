@@ -21,6 +21,7 @@ import { queryClient, queryPersister, CACHE_MAX_AGE } from '../services/queryCli
 import { warmUpServer } from '../services/api';
 import { ServerWakeBanner } from '../components/ServerWakeBanner';
 import { DialogHost } from '../components/DialogHost';
+import { AppUpdateModal } from '../components/AppUpdateModal';
 import { useSettingsStore } from '../store/settingsStore';
 import { UnoInteractiveAssistant } from '../components/onboarding/UnoInteractiveAssistant';
 
@@ -139,6 +140,7 @@ export default function RootLayout() {
           </PersistQueryClientProvider>
           <ServerWakeBanner />
           <DialogHost />
+          <AppUpdateModal />
         </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -72,6 +72,18 @@ export async function updateEnrollmentStatus(subjectId: number, studentId: numbe
   return data;
 }
 
+export interface AddManualStudentPayload {
+  name: string;
+  prn: string;
+  email: string;
+  platform?: 'ios' | 'android';
+}
+
+export async function addManualStudent(subjectId: number, payload: AddManualStudentPayload) {
+  const { data } = await api.post(API_ROUTES.ENROLLMENTS.MANUAL_STUDENT(subjectId), payload);
+  return data;
+}
+
 // ─── Session Management (Faculty) ─────────────────────────────────────────────
 
 interface StartSessionParams {

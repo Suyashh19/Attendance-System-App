@@ -198,10 +198,10 @@ export interface SessionStudentAttendance {
   id: number;
   name: string;
   prn: string | null;
-  rollNo: string | null;
   status: 'PRESENT' | 'ABSENT' | 'INVALID' | 'EXCUSED';
   reason: string | null;
   editedByFaculty: boolean;
+  devicePlatform?: 'ios' | 'android' | string;
 }
 
 export interface SessionDetailsResponse {
@@ -221,8 +221,8 @@ export interface EnrolledStudent {
   name: string | null;
   email: string;
   prn: string | null;
-  rollNo: string | null;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  devicePlatform?: 'ios' | 'android' | string;
 }
 
 export interface StudentAttendanceSummary {
@@ -266,5 +266,5 @@ export interface LeaveRequest {
   /** Student's own list: which subject */
   subject?: { id: number; name: string; code: string; type: 'theory' | 'practical' };
   /** Faculty's list: who asked */
-  student?: { id: number; name: string | null; rollNo: string | null; prn: string | null };
+  student?: { id: number; name: string | null; prn: string | null };
 }

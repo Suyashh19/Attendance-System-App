@@ -140,7 +140,7 @@ export default function LectureDetailScreen() {
   const shown = students.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (!needle) return true;
-    return [s.name, s.prn, s.rollNo].some((v) => v && String(v).toLowerCase().includes(needle));
+    return [s.name, s.prn].some((v) => v && String(v).toLowerCase().includes(needle));
   });
   const invalidCount = students.filter((s) => s.status === 'INVALID').length;
   const absentCount = students.filter((s) => s.status === 'ABSENT').length;
@@ -185,7 +185,7 @@ export default function LectureDetailScreen() {
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
-                    placeholder="Search by name, PRN or roll no."
+                    placeholder="Search by name or PRN"
                     placeholderTextColor={colors.subtle}
                     selectionColor={colors.primary}
                     autoCorrect={false}
@@ -225,9 +225,10 @@ export default function LectureDetailScreen() {
             <View className="flex-1 mx-3">
               <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>{item.name}</Text>
               <View className="flex-row items-center mt-1">
-                {item.rollNo && (
-                  <View className="bg-light px-2 py-0.5 rounded-md mr-2">
-                    <Text className="text-light-muted text-[10px] font-bold">Roll: {item.rollNo}</Text>
+                {item.devicePlatform === 'ios' && (
+                  <View className="bg-light-primaryBg px-1.5 py-0.5 rounded mr-1.5 flex-row items-center">
+                    <Ionicons name="logo-apple" size={10} color={colors.primary} style={{ marginRight: 2 }} />
+                    <Text className="text-[10px] font-bold text-primary">iOS</Text>
                   </View>
                 )}
                 {item.prn && (

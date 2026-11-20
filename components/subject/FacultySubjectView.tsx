@@ -46,6 +46,7 @@ import { TourTarget } from '../onboarding/TourTarget';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { INTERACTIVE_TOUR_STEPS } from '../../constants/onboardingTour';
 import { BottomSheet } from '../BottomSheet';
+import { AddStudentModal } from './AddStudentModal';
 
 type Tab = 'students' | 'requests' | 'leaves' | 'lectures';
 
@@ -111,6 +112,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
   const [showEdit, setShowEdit] = useState(false);
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showAddStudent, setShowAddStudent] = useState(false);
   const [lowestFirst, setLowestFirst] = useState(false);
 
   const enrollments = useQuery({
@@ -334,7 +336,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
             if (p === null || p >= MIN_ATTENDANCE_PERCENT) return false;
           }
           if (!q) return true;
-          return [s.name, s.prn, s.rollNo, s.email].some((v) => v && String(v).toLowerCase().includes(q));
+          return [s.name, s.prn, s.email].some((v) => v && String(v).toLowerCase().includes(q));
         })
         .sort((a, b) => {
           if (lowestFirst) {
@@ -402,10 +404,17 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
             <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>
               {student.name || 'Unnamed student'}
             </Text>
-            <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>
-              {student.prn ? `PRN ${student.prn}` : 'No PRN yet'}
-              {student.rollNo ? ` · Roll ${student.rollNo}` : ''}
-            </Text>
+            <View className="flex-row items-center mt-0.5">
+              {student.devicePlatform === 'ios' && (
+                <View className="bg-light-primaryBg px-1.5 py-0.5 rounded mr-1.5 flex-row items-center">
+                  <Ionicons name="logo-apple" size={10} color={colors.primary} style={{ marginRight: 2 }} />
+                  <Text className="text-[10px] font-bold text-primary">iOS</Text>
+                </View>
+              )}
+              <Text className="text-light-muted text-xs font-medium" numberOfLines={1}>
+                {student.prn ? `PRN: ${student.prn}` : 'No PRN yet'}
+              </Text>
+            </View>
           </View>
           {percent === null ? (
             <Text className="text-light-subtle text-xs font-semibold mr-2">No classes</Text>
@@ -423,7 +432,6 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           <View className="px-4 pb-4 pt-3 border-t border-light-border bg-light/60">
             <Detail icon="mail-outline" label="Email" value={student.email} />
             <Detail icon="id-card-outline" label="PRN" value={student.prn || 'Not added yet'} />
-            {student.rollNo ? <Detail icon="list-outline" label="Roll no." value={student.rollNo} /> : null}
 
             <View className="flex-row mt-3 mb-4">
               <Count label="Present" value={summary?.PRESENT ?? 0} tone="success" />
@@ -494,8 +502,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           <View className="flex-1 mx-3">
             <Text className="text-light-text font-bold text-[15px]" numberOfLines={1}>{name}</Text>
             <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>
-              {leave.student?.prn ? `PRN ${leave.student.prn}` : 'No PRN yet'}
-              {leave.student?.rollNo ? ` · Roll ${leave.student.rollNo}` : ''}
+              {leave.student?.prn ? `PRN: ${leave.student.prn}` : 'No PRN yet'}
             </Text>
           </View>
           {!waiting && (
@@ -702,6 +709,17 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
               />
             )}
 
+            {tab === 'students' && (
+              <Button
+                title="Add Student Manually"
+                icon="person-add-outline"
+                variant="outline"
+                size="sm"
+                onPress={() => setShowAddStudent(true)}
+                className="mb-3"
+              />
+            )}
+
             {tab === 'students' && approved.length > 0 && (
               <View className="mb-4">
                 <View className="flex-row items-center bg-light-card border border-light-border rounded-2xl px-4 h-[52px] mb-3">
@@ -709,7 +727,7 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
                   <TextInput
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Search by name, PRN or roll no."
+                    placeholder="Search by name or PRN"
                     placeholderTextColor={colors.subtle}
                     selectionColor={colors.primary}
                     autoCorrect={false}
@@ -822,6 +840,17 @@ export function FacultySubjectView({ subject }: FacultySubjectViewProps) {
           setShowDuplicate(false);
           queryClient.invalidateQueries({ queryKey: ['subjects'] });
           offerToShareSubject(created, 'Copy created');
+        }}
+      />
+
+      <AddStudentModal
+        visible={showAddStudent}
+        subjectId={subjectId}
+        onClose={() => setShowAddStudent(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['enrollments', subjectId] });
+          queryClient.invalidateQueries({ queryKey: ['subjects'] });
+          queryClient.invalidateQueries({ queryKey: ['subject-summary', subjectId] });
         }}
       />
     </View>

@@ -121,8 +121,7 @@ export default function LeaveRequestsScreen() {
               {leave.student?.name || 'Unnamed student'}
             </Text>
             <Text className="text-light-muted text-xs font-medium mt-0.5" numberOfLines={1}>
-              {leave.student?.prn ? `PRN ${leave.student.prn}` : 'No PRN yet'}
-              {leave.student?.rollNo ? ` · Roll ${leave.student.rollNo}` : ''}
+              {leave.student?.prn ? `PRN: ${leave.student.prn}` : 'No PRN yet'}
             </Text>
           </View>
         </View>

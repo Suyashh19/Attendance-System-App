@@ -24,6 +24,7 @@ export const API_ROUTES = {
     BY_SUBJECT: (id: number) => `/enrollments/${id}`,
     UNENROLL: (id: number) => `/enrollments/${id}/unenroll`,
     UPDATE_STATUS: (subjectId: number, studentId: number) => `/enrollments/subject/${subjectId}/student/${studentId}/status`,
+    MANUAL_STUDENT: (subjectId: number) => `/enrollments/subject/${subjectId}/manual-student`,
   },
   SESSIONS: {
     START: '/sessions/start',

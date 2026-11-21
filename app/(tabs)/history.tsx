@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { View, FlatList, RefreshControl, TouchableOpacity, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showAlert } from '../../store/dialogStore';
 import { useQuery } from '@tanstack/react-query';
 import { getAttendanceHistory, getMySubjects, getRecentSessions } from '../../services/attendance';
 import { exportAttendanceData } from '../../services/analytics';
 import { HistorySubjectCard } from '../../components/HistorySubjectCard';
 import { ExportFilterModal } from '../../components/ExportFilterModal';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import type { SubjectHistory, Subject, RecentSession } from '../../types';
@@ -61,7 +62,8 @@ import {
 } from '../../utils/recentView';
 
 export default function HistoryScreen() {
- const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
  const user = useAuthStore((s) => s.user);
  // Redraw when the semester months change
  useSettingsStore((s) => s.calendar);
@@ -488,7 +490,7 @@ export default function HistoryScreen() {
  <FlatList
  data={(isStudent ? studentEntries : facultyTab === 'recent' ? recentEntries : reportEntries) as any[]}
  keyExtractor={(item) => (item.kind === 'header' ? `header-${item.key}` : item.kind === 'subject' ? String(item.subject.id) : item.kind === 'session' ? String(item.session.id) : String(item.id))}
- contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+ contentContainerStyle={{ paddingBottom: insets.bottom + 104, flexGrow: 1 }}
  showsVerticalScrollIndicator={false}
  keyboardShouldPersistTaps="handled"
  refreshControl={
@@ -584,12 +586,15 @@ export default function HistoryScreen() {
  return (
  <View className="px-4">
  <Card className="p-4 mb-3 flex-row items-center">
- <View className={`w-12 h-12 rounded-2xl items-center justify-center mr-3 ${isPractical ? 'bg-gold-bg' : 'bg-light-primaryBg'}`}>
- <Ionicons
- name={isPractical ? 'flask' : 'book'}
- size={20}
- color={isPractical ? colors.gold : colors.primary}
- />
+ <View
+   className="w-12 h-12 rounded-2xl items-center justify-center mr-3"
+   style={{ backgroundColor: '#F0EBFA' }}
+ >
+   <Feather
+     name="book-open"
+     size={20}
+     color="#5632B5"
+   />
  </View>
  <View className="flex-1 mr-3">
  <Text className="text-light-text font-bold text-base" numberOfLines={1}>{subject.name}</Text>

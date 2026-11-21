@@ -22,70 +22,105 @@ function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <View
-      className="flex-row bg-light-card rounded-t-[28px] px-3 pt-3"
-      style={[shadow.raised, { paddingBottom: Math.max(insets.bottom, 10) + 4 }]}
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        elevation: 8,
+        backgroundColor: 'transparent',
+        paddingHorizontal: 16,
+        paddingBottom: Math.max(insets.bottom, 10),
+        paddingTop: 6,
+      }}
     >
-      {state.routes.map((route, index) => {
-        if (HIDDEN_ROUTES.includes(route.name)) return null;
+      <View
+        className="flex-row items-center justify-around px-2 py-2"
+        style={{
+          backgroundColor: '#F7F5FC',
+          borderRadius: 36,
+          borderWidth: 1,
+          borderColor: 'rgba(89, 56, 183, 0.08)',
+          shadowColor: '#17132B',
+          shadowOpacity: 0.06,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 4,
+        }}
+      >
+        {state.routes.map((route, index) => {
+          if (HIDDEN_ROUTES.includes(route.name)) return null;
 
-        const { options } = descriptors[route.key];
-        const focused = state.index === index;
-        const tint = focused ? colors.primary : colors.subtle;
-        const label = options.title ?? route.name;
+          const { options } = descriptors[route.key];
+          const focused = state.index === index;
+          const tint = focused ? '#5938B7' : '#858194';
+          const label = options.title ?? route.name;
 
-        const isReportsTab = isFaculty && route.name === 'history';
+          const isReportsTab = isFaculty && route.name === 'history';
 
-        const onPress = () => {
-          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-          if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
-          if (isReportsTab && useOnboardingStore.getState().isActive) {
-            useOnboardingStore.getState().advanceActionStep('navigate_to_reports');
-          }
-        };
+          const onPress = () => {
+            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+            if (isReportsTab && useOnboardingStore.getState().isActive) {
+              useOnboardingStore.getState().advanceActionStep('navigate_to_reports');
+            }
+          };
 
-        const tabContent = (
-          <Pressable
-            key={route.key}
-            onPress={onPress}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: focused }}
-            accessibilityLabel={label}
-            style={{ width: '100%', alignItems: 'center' }}
-          >
-            <View
-              className="w-16 h-9 rounded-full items-center justify-center"
-              style={{ backgroundColor: focused ? colors.primaryBg : 'transparent' }}
-            >
-              {options.tabBarIcon?.({ focused, color: tint, size: 22 })}
-            </View>
-            <Text
-              className={`text-[11px] mt-1 ${focused ? 'font-bold' : 'font-semibold'}`}
-              style={{ color: tint }}
-            >
-              {label}
-            </Text>
-          </Pressable>
-        );
-
-        if (isReportsTab) {
-          return (
-            <TourTarget
+          const tabContent = (
+            <Pressable
               key={route.key}
-              targetKey="tour_reports_tab"
-              borderRadius={24}
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              onPress={onPress}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: focused }}
+              accessibilityLabel={label}
+              android_ripple={{ color: 'transparent' }}
+              style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
             >
-              {tabContent}
-            </TourTarget>
+              <View
+                style={{
+                  width: 76,
+                  height: 46,
+                  borderRadius: 23,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: focused ? '#EAE5F8' : 'transparent',
+                  overflow: 'hidden',
+                }}
+              >
+                {options.tabBarIcon?.({ focused, color: tint, size: 20 })}
+                <Text
+                  className={`text-[10.5px] mt-0.5 ${focused ? 'font-bold' : 'font-semibold'}`}
+                  style={{ color: tint }}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </View>
+            </Pressable>
           );
-        }
 
-        return (
-          <View key={route.key} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            {tabContent}
-          </View>
-        );
-      })}
+          if (isReportsTab) {
+            return (
+              <TourTarget
+                key={route.key}
+                targetKey="tour_reports_tab"
+                borderRadius={28}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              >
+                {tabContent}
+              </TourTarget>
+            );
+          }
+
+          return (
+            <View key={route.key} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              {tabContent}
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -113,6 +148,12 @@ export default function TabLayout() {
         screenOptions={{
           headerShown: false,
           tabBarPosition: 'bottom',
+          tabBarStyle: {
+            position: 'absolute',
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
+          },
         }}
       >
           <Tabs.Screen

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import type { Subject } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { colors, classesNeeded, shadow, MIN_ATTENDANCE_PERCENT } from '../constants/theme';
@@ -54,11 +54,14 @@ export function SubjectCard({
       contentStyle={shadow.card}
     >
       <View className="flex-row items-center">
-        <View className={`w-[52px] h-[52px] rounded-2xl items-center justify-center mr-3 ${isPractical ? 'bg-gold-bg' : 'bg-light-primaryBg'}`}>
-          <Ionicons
-            name={isPractical ? 'flask' : 'book'}
+        <View
+          className="w-[52px] h-[52px] rounded-2xl items-center justify-center mr-3"
+          style={{ backgroundColor: '#F0EBFA' }}
+        >
+          <Feather
+            name="book-open"
             size={22}
-            color={isPractical ? colors.gold : colors.primary}
+            color="#5632B5"
           />
         </View>
 

@@ -47,6 +47,11 @@ import {
 
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.suyashpatil.attendance';
 
+// Floating overlay navbar dimensions for calculating dynamic bottom clearance
+const NAVBAR_HEIGHT = 64; // Capsule height (46px item + 16px container padding + 2px border)
+const NAVBAR_BOTTOM_OFFSET = 10; // Floating gap from bottom edge
+const FINAL_CARD_CLEARANCE = 24; // Extra space so the final subject card clears the floating navbar
+
 export default function HomeScreen() {
  const router = useRouter();
  const insets = useSafeAreaInsets();
@@ -544,12 +549,15 @@ export default function HomeScreen() {
  },
  ];
 
+  // Dynamic bottom padding based on navbar height, bottom offset, and Android safe-area inset
+  const dynamicBottomPadding = NAVBAR_HEIGHT + Math.max(insets.bottom, NAVBAR_BOTTOM_OFFSET) + FINAL_CARD_CLEARANCE;
+
  return (
  <View className="flex-1 bg-light">
  <FlatList
  data={listEntries}
  keyExtractor={(entry) => (entry.kind === 'header' ? `header-${entry.key}` : String(entry.subject.id))}
- contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+ contentContainerStyle={{ paddingBottom: dynamicBottomPadding, flexGrow: 1 }}
  showsVerticalScrollIndicator={false}
  refreshControl={
  <RefreshControl
@@ -565,9 +573,11 @@ export default function HomeScreen() {
  <Hero className="px-5 pb-6" style={{ paddingTop: insets.top + 16 }}>
  <View className="flex-row items-center">
  <TourTarget targetKey="tour_dashboard_header" borderRadius={24} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
+ {!isFaculty && (
  <View className="w-12 h-12 rounded-full bg-white/15 border border-white/10 items-center justify-center mr-3">
- <Ionicons name={isFaculty ? 'easel' : 'school'} size={22} color={colors.white} />
+ <Ionicons name="school" size={22} color={colors.white} />
  </View>
+ )}
  <View className="flex-1">
  <Text className="text-white text-[22px] font-extrabold" numberOfLines={1}>Hello, {firstName}</Text>
  </View>
